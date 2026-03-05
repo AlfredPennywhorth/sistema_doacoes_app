@@ -1,7 +1,7 @@
+import { MaterialIcons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
 import { Platform } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
 
 export default function TabLayout() {
   return (
@@ -35,6 +35,15 @@ export default function TabLayout() {
           title: 'Vitrine',
           tabBarIcon: ({ color, size }) => (
             <MaterialIcons name="storefront" size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="requests"
+        options={{
+          title: 'Pedidos',
+          tabBarIcon: ({ color, size }) => (
+            <MaterialIcons name="list-alt" size={size} color={color} />
           ),
         }}
       />

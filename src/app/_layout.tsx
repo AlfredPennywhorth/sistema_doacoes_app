@@ -4,8 +4,8 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
-import { AuthProvider, useAuth } from '@/hooks/useAuth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { AuthProvider, useAuth } from '@/hooks/useAuth';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -41,6 +41,7 @@ function RootLayoutNav() {
         <Stack.Screen name="donate/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
         <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
+        <Stack.Screen name="admin/warehouses" options={{ title: 'Galpões', headerShown: false }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       </Stack>
       <StatusBar style="auto" />

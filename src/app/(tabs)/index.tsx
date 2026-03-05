@@ -1,12 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, Image, ScrollView, Dimensions, Platform, Alert } from 'react-native';
-import { MaterialIcons } from '@expo/vector-icons';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
 import { useAuth } from '@/hooks/useAuth';
-import { getDonations } from '@/services/databaseService';
+import { getDonations, getProfile } from '@/services/databaseService';
+import { MaterialIcons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React, { useEffect, useState } from 'react';
+import { Alert, Dimensions, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-// Carrega react-native-maps apenas se disponível (não funciona no Expo Go com Nova Arquitetura)
+// Carrega react-native-maps apenas se disponível
 let MapView: any = null;
 let Marker: any = null;
 try {
@@ -14,48 +14,55 @@ try {
   MapView = Maps.default;
   Marker = Maps.Marker;
 } catch (e) {
-  // Módulo nativo não disponível (Expo Go)
+  // Módulo nativo não disponível
 }
-
-// Placeholder quando o mapa não está disponível
-function MapPlaceholder() {
-  return (
-    <View style={{ flex: 1, backgroundColor: '#e8f0fe', alignItems: 'center', justifyContent: 'center' }}>
-      <MaterialIcons name="map" size={64} color="#003366" style={{ opacity: 0.3 }} />
-      <Text style={{ color: '#003366', opacity: 0.5, marginTop: 8, fontSize: 13 }}>
-        Mapa disponível no app instalado
-      </Text>
-    </View>
-  );
-}
-
-
 
 const { width, height } = Dimensions.get('window');
-const MAP_HEIGHT = height;
 
 function categoryIcon(cat: string) {
   if (!cat) return 'volunteer-activism';
-  if (cat.includes('ALIMENTO')) return 'restaurant';
-  if (cat.includes('VESTU')) return 'checkroom';
-  if (cat.includes('M')) return 'chair';
-  if (cat.includes('B')) return 'menu-book';
+  const c = cat.toUpperCase();
+  if (c.includes('ALIMENTO')) return 'restaurant';
+  if (c.includes('VESTU')) return 'checkroom';
+  if (c.includes('MÓVEIS') || c.includes('MOVEIS')) return 'chair';
+  if (c.includes('HOSPITAL')) return 'medical-services';
+  if (c.includes('ÓRGÃO') || c.includes('ORGAO')) return 'music-note';
+  if (c.includes('BRANCA')) return 'kitchen';
   return 'volunteer-activism';
 }
 
 export default function MapScreen() {
   const router = useRouter();
-  const { signOut } = useAuth();
+  const { user, signOut } = useAuth();
   const [search, setSearch] = useState('');
   const [donations, setDonations] = useState<any[]>([]);
-  const [featured, setFeatured] = useState<any>(null);
+  const [stats, setStats] = useState<any[]>([]);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    getDonations(null).then((data) => {
-      setDonations(data);
-      if (data.length > 0) setFeatured(data[0]);
-    });
-  }, []);
+    loadData();
+  }, [user]);
+
+  const loadData = async () => {
+    // Para as estatísticas, queremos ver inclusive itens reservados para entender a "adesão"
+    const data = await getDonations(null, null, true);
+    setDonations(data);
+
+    // Agrupar estatísticas por categoria
+    const categoriesSet = new Set(data.map(d => d.category));
+    const newStats = Array.from(categoriesSet).map(cat => ({
+      category: cat,
+      available: data.filter(d => d.category === cat && d.status === 'available').length,
+      reserved: data.filter(d => d.category === cat && d.status === 'reserved').length
+    })).sort((a, b) => b.available - a.available);
+
+    setStats(newStats);
+
+    if (user) {
+      const profile = await getProfile(user.id);
+      if (profile?.is_admin) setIsAdmin(true);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert('Sair', 'Deseja encerrar sua sessão?', [
@@ -68,439 +75,143 @@ export default function MapScreen() {
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
 
-        {/* --- MAP LAYER --- */}
+        {/* --- CAMADA DO MAPA --- */}
         {MapView ? (
           <MapView
             style={styles.map}
             initialRegion={{
               latitude: -23.5505,
               longitude: -46.6333,
-              latitudeDelta: 0.05,
-              longitudeDelta: 0.05,
+              latitudeDelta: 0.1,
+              longitudeDelta: 0.1,
             }}
           >
             {donations.filter(d => d.latitude && d.longitude).map((d) => (
-              <Marker key={d.id} coordinate={{ latitude: d.latitude, longitude: d.longitude }}
-                onPress={() => setFeatured(d)}>
-                <View style={[styles.markerPin, { backgroundColor: '#003366' }]}>
+              <Marker
+                key={d.id}
+                coordinate={{ latitude: d.latitude, longitude: d.longitude }}
+                onCalloutPress={() => router.push({ pathname: '/(tabs)/list', params: { category: d.category } })}
+              >
+                <View style={[
+                  styles.markerPin,
+                  { backgroundColor: d.status === 'reserved' ? '#94a3b8' : (d.is_urgent ? '#dc2626' : '#003366') }
+                ]}>
                   <MaterialIcons name={categoryIcon(d.category)} size={16} color="#fff" />
                 </View>
-                <View style={[styles.markerStem, { backgroundColor: '#003366' }]} />
+                <View style={[
+                  styles.markerStem,
+                  { backgroundColor: d.status === 'reserved' ? '#94a3b8' : (d.is_urgent ? '#dc2626' : '#003366') }
+                ]} />
               </Marker>
             ))}
           </MapView>
         ) : (
-          <MapPlaceholder />
+          <View style={styles.mapPlaceholder}>
+            <MaterialIcons name="map" size={64} color="#e2e8f0" />
+            <Text style={styles.placeholderText}>Mapa disponível no dispositivo real</Text>
+          </View>
         )}
 
-        {/* --- TOP HEADER CONTENT OVER MAP --- */}
-        <View style={styles.headerAbsolute}>
-          {/* Top Row: User & Actions */}
-          <View style={styles.topRow}>
-            <View style={styles.userInfo}>
-              <View style={styles.avatar}>
-                <MaterialIcons name="person" size={24} color="#003366" />
-              </View>
-              <View>
-                <Text style={styles.locationLabel}>LOCALIZAÇÃO</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={styles.locationCity}>São Paulo, SP</Text>
-                  <MaterialIcons name="expand-more" size={18} color="#003366" />
-                </View>
-              </View>
-            </View>
-            <View style={styles.actionsBox}>
-              <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/donate/new' as any)}>
-                <MaterialIcons name="add-circle-outline" size={20} color="#003366" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconBtn} onPress={handleLogout}>
-                <MaterialIcons name="logout" size={20} color="#003366" />
-              </TouchableOpacity>
-            </View>
+        {/* --- CONTROLES SUPERIORES --- */}
+        <View style={styles.topContainer}>
+          <View style={styles.searchBar}>
+            <MaterialIcons name="search" size={20} color="#64748b" />
+            <TextInput
+              placeholder="Buscar doações..."
+              style={styles.searchInput}
+              value={search}
+              onChangeText={setSearch}
+            />
           </View>
 
-          {/* Search Row */}
-          <View style={styles.searchRow}>
-            <View style={styles.searchContainer}>
-              <MaterialIcons name="search" size={20} color="#94a3b8" style={styles.searchIcon} />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Buscar doações próximas"
-                placeholderTextColor="#94a3b8"
-                value={search}
-                onChangeText={setSearch}
-              />
-            </View>
-            <TouchableOpacity style={styles.filterBtn}>
-              <MaterialIcons name="tune" size={20} color="#fff" />
+          {isAdmin && (
+            <TouchableOpacity
+              style={styles.adminFab}
+              onPress={() => router.push('/admin/warehouses')}
+            >
+              <MaterialIcons name="settings" size={22} color="#fff" />
             </TouchableOpacity>
-          </View>
+          )}
 
-          {/* Tags Row */}
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tagsScroll}>
-            <TouchableOpacity style={[styles.tag, styles.tagActive]}>
-              <MaterialIcons name="restaurant" size={14} color="#fff" />
-              <Text style={styles.tagTextActive}>Alimentos</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.tag}>
-              <MaterialIcons name="checkroom" size={14} color="#475569" />
-              <Text style={styles.tagText}>Vestuário</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.tag}>
-              <MaterialIcons name="chair" size={14} color="#475569" />
-              <Text style={styles.tagText}>Móveis</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.tag}>
-              <MaterialIcons name="menu-book" size={14} color="#475569" />
-              <Text style={styles.tagText}>Bíblias/Hinos</Text>
-            </TouchableOpacity>
+          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+            <MaterialIcons name="logout" size={20} color="#003366" />
+          </TouchableOpacity>
+        </View>
+
+        {/* --- RESUMO POR CATEGORIA (SUBSTITUI O CARD) --- */}
+        <View style={styles.summaryContainer}>
+          <Text style={styles.summaryTitle}>Monitor de Doações</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsScroll}>
+            {stats.length === 0 ? (
+              <Text style={styles.noStatsText}>Nenhum item cadastrado.</Text>
+            ) : (
+              stats.map((s, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  style={styles.statCard}
+                  onPress={() => router.push({ pathname: '/(tabs)/list', params: { category: s.category } })}
+                >
+                  <View style={styles.statIconBox}>
+                    <MaterialIcons name={categoryIcon(s.category)} size={20} color="#003366" />
+                  </View>
+                  <View>
+                    <Text style={styles.statCatName}>{s.category}</Text>
+                    <View style={styles.statNumbers}>
+                      <Text style={styles.statAvail}>{s.available} disp.</Text>
+                      <View style={styles.statDot} />
+                      <Text style={styles.statResv}>{s.reserved} res.</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ))
+            )}
           </ScrollView>
         </View>
-
-        {/* --- FLOATING CONTROLS --- */}
-        <View style={styles.mapControls}>
-          <TouchableOpacity style={styles.mapBtn}>
-            <MaterialIcons name="add" size={24} color="#003366" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.mapBtn}>
-            <MaterialIcons name="remove" size={24} color="#003366" />
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.mapBtn, { backgroundColor: '#003366', marginTop: 10 }]}>
-            <MaterialIcons name="my-location" size={20} color="#fff" />
-          </TouchableOpacity>
-        </View>
-
-        {/* --- BOTTOM FLOATING ITEM CARD --- */}
-        <View style={styles.bottomCardContainer}>
-          {featured ? (
-            <View style={styles.itemCard}>
-              <View style={styles.itemCardImgBox}>
-                {featured.image_url
-                  ? <Image source={{ uri: featured.image_url }} style={styles.itemCardImg} />
-                  : <View style={[styles.itemCardImg, { backgroundColor: '#e8f0fe', alignItems: 'center', justifyContent: 'center' }]}>
-                    <MaterialIcons name={categoryIcon(featured.category)} size={32} color="#003366" style={{ opacity: 0.4 }} />
-                  </View>
-                }
-              </View>
-              <View style={styles.itemCardContent}>
-                <View style={styles.itemBadgeRow}>
-                  <View style={styles.badge}>
-                    <Text style={styles.badgeText}>Disponível</Text>
-                  </View>
-                  <View style={styles.distanceBadge}>
-                    <MaterialIcons name="label" size={12} color="#94a3b8" />
-                    <Text style={styles.distanceText}>{featured.category}</Text>
-                  </View>
-                </View>
-                <Text style={styles.itemCardTitle} numberOfLines={1}>{featured.title}</Text>
-                <Text style={styles.itemCardDesc} numberOfLines={1}>{featured.description ?? '—'}</Text>
-                <View style={styles.itemCardFooter}>
-                  <View style={styles.donorInfo}>
-                    <View style={styles.donorAvatar} />
-                    <Text style={styles.donorName}>{featured.profiles?.name ?? 'Anônimo'}</Text>
-                  </View>
-                  <TouchableOpacity style={styles.btnDetails}
-                    onPress={() => router.push(`/donate/${featured.id}` as any)}>
-                    <Text style={styles.btnDetailsText}>Ver Detalhes</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          ) : (
-            <View style={[styles.itemCard, { justifyContent: 'center', alignItems: 'center', paddingVertical: 20 }]}>
-              <Text style={{ color: '#94a3b8', fontSize: 13 }}>Nenhuma doação disponível ainda</Text>
-            </View>
-          )}
-        </View>
-
       </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#fff',
+  safeArea: { flex: 1, backgroundColor: '#fff' },
+  container: { flex: 1, position: 'relative' },
+  map: { width: width, height: height },
+  mapPlaceholder: { flex: 1, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' },
+  placeholderText: { color: '#94a3b8', marginTop: 12, fontSize: 13 },
+
+  markerPin: { width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' },
+  markerStem: { width: 4, height: 6, alignSelf: 'center', marginTop: -2 },
+
+  topContainer: {
+    position: 'absolute', top: 20, left: 16, right: 16,
+    flexDirection: 'row', alignItems: 'center', gap: 10, zIndex: 100
   },
-  container: {
-    flex: 1,
-    backgroundColor: '#f8fafc',
+  searchBar: {
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#fff', paddingHorizontal: 16, height: 50,
+    borderRadius: 25, elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 5,
   },
-  map: {
-    width: width,
-    height: MAP_HEIGHT,
-    position: 'absolute',
-    top: 0,
-    left: 0,
+  searchInput: { flex: 1, height: 50, marginLeft: 10, fontSize: 15, color: '#1e293b' },
+
+  logoutBtn: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', elevation: 5 },
+  adminFab: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#b91c1c', alignItems: 'center', justifyContent: 'center', elevation: 5 },
+
+  summaryContainer: {
+    position: 'absolute', bottom: 10, left: 10, right: 10,
+    backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 24,
+    padding: 16, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: -4 }, shadowOpacity: 0.1, shadowRadius: 10,
   },
-  headerAbsolute: {
-    position: 'absolute',
-    top: 0,
-    width: '100%',
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    borderBottomWidth: 1,
-    borderColor: '#e2e8f0',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 10,
-    zIndex: 10,
+  summaryTitle: { fontSize: 11, fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, paddingLeft: 4 },
+  statsScroll: { gap: 12, paddingRight: 20 },
+  statCard: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
+    padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#f1f5f9', gap: 10, minWidth: 150
   },
-  topRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f1f5f9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-  },
-  locationLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#64748b',
-    letterSpacing: 1,
-  },
-  locationCity: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#003366',
-  },
-  actionsBox: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  searchContainer: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f8fafc',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    height: 44,
-  },
-  searchIcon: {
-    marginRight: 8,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 14,
-    color: '#1e293b',
-  },
-  filterBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: '#003366',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tagsScroll: {
-    flexDirection: 'row',
-  },
-  tag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
-    gap: 4,
-  },
-  tagActive: {
-    backgroundColor: '#003366',
-    borderColor: '#003366',
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#475569',
-  },
-  tagTextActive: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#fff',
-  },
-  mapControls: {
-    position: 'absolute',
-    right: 16,
-    bottom: 220,
-    gap: 8,
-  },
-  mapBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 8,
-    backgroundColor: '#fff',
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  bottomCardContainer: {
-    position: 'absolute',
-    bottom: 90,
-    left: 16,
-    right: 16,
-    zIndex: 20,
-  },
-  itemCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 12,
-    flexDirection: 'row',
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    elevation: 5,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  itemCardImgBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    overflow: 'hidden',
-    backgroundColor: '#f1f5f9',
-  },
-  itemCardImg: {
-    width: '100%',
-    height: '100%',
-  },
-  itemCardContent: {
-    flex: 1,
-    justifyContent: 'space-between',
-  },
-  itemBadgeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  badge: {
-    backgroundColor: '#f1f5f9',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-  },
-  badgeText: {
-    color: '#003366',
-    fontSize: 9,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  distanceBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-  },
-  distanceText: {
-    fontSize: 11,
-    color: '#94a3b8',
-  },
-  itemCardTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#003366',
-    marginTop: 4,
-  },
-  itemCardDesc: {
-    fontSize: 11,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  itemCardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 6,
-  },
-  donorInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  donorAvatar: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#e2e8f0',
-  },
-  donorName: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: '#475569',
-  },
-  btnDetails: {
-    backgroundColor: '#003366',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  btnDetailsText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  markerPin: {
-    padding: 6,
-    borderRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 3,
-  },
-  markerStem: {
-    width: 2,
-    height: 12,
-    alignSelf: 'center',
-    marginTop: -2,
-  }
+  statIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: '#f1f5f9', alignItems: 'center', justifyContent: 'center' },
+  statCatName: { fontSize: 13, fontWeight: 'bold', color: '#1e293b' },
+  statNumbers: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  statAvail: { fontSize: 11, color: '#059669', fontWeight: 'bold' },
+  statResv: { fontSize: 11, color: '#94a3b8' },
+  statDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: '#cbd5e1', marginHorizontal: 6 },
+  noStatsText: { color: '#94a3b8', padding: 20, fontSize: 13 },
 });
