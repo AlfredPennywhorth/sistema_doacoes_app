@@ -1,52 +1,66 @@
 import { supabase } from '../config/supabase';
 
-/**
- * Service to handle transactions and generic CRUD operations with Supabase.
- * In a real-world app, you might want to wrap these functions with error handling,
- * logging, and typing.
- */
+// ─── Itens / Doações ────────────────────────────────────────────────────────
 
-export const getAvailableItems = async () => {
-    const { data, error } = await supabase
+export const getDonations = async (category = null) => {
+    let query = supabase
         .from('items')
         .select('*')
-        .eq('status', 'available');
+        .eq('status', 'available')
+        .order('created_at', { ascending: false });
 
-    if (error) {
-        console.error('Error fetching available items', error);
-        return [];
+    if (category && category !== 'TODOS') {
+        query = query.eq('category', category);
     }
+
+    const { data, error } = await query;
+    if (error) { console.error('Erro ao buscar doações', error); return []; }
     return data;
 };
 
-// Atomic lock implementation equivalent using Postgres Update
+export const getDonationById = async (id) => {
+    const { data, error } = await supabase
+        .from('items')
+        .select('*')
+        .eq('id', id)
+        .single();
+    if (error) { console.error('Erro ao buscar doação', error); return null; }
+    return data;
+};
+
+export const createDonation = async (donationData) => {
+    const { data, error } = await supabase
+        .from('items')
+        .insert([donationData])
+        .select()
+        .single();
+    if (error) return { success: false, error: error.message };
+    return { success: true, data };
+};
+
+// ─── Reserva atômica ────────────────────────────────────────────────────────
+
 export const requestItemWithLock = async (itemId, userId) => {
-    // We use Postgres' atomic UPDATE where status = 'available'
-    const { data, error, count } = await supabase
+    const { data, error } = await supabase
         .from('items')
         .update({ status: 'reserved', requested_by: userId, reserved_at: new Date().toISOString() })
         .eq('id', itemId)
-        .eq('status', 'available') // crucial for atomic lock
+        .eq('status', 'available')
         .select();
 
-    if (error) {
-        console.error('Transaction failed', error);
-        return { success: false, message: 'Erro ao tentar reservar item.' };
-    }
-
-    // If no rows updated, someone else already took it or it's not available
-    if (!data || data.length === 0) {
-        return { success: false, message: 'Item esgotou recentemente. Não foi possível reservar.' };
-    }
-
+    if (error) return { success: false, message: 'Erro ao tentar reservar item.' };
+    if (!data || data.length === 0) return { success: false, message: 'Item esgotou recentemente.' };
     return { success: true, message: 'Item reservado com sucesso!', data: data[0] };
 };
+
+// ─── Legado ─────────────────────────────────────────────────────────────────
+
+export const getAvailableItems = getDonations;
 
 export const registerNeed = async (needData) => {
     const { data, error } = await supabase
         .from('needs')
         .insert([{ ...needData, created_at: new Date().toISOString() }]);
-
     if (error) return { success: false, error };
     return { success: true, data };
 };

@@ -1,43 +1,97 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, Image, ScrollView, Dimensions, Platform } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, Image, ScrollView, Dimensions, Platform, Alert } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
+import { getDonations } from '@/services/databaseService';
+
+// Carrega react-native-maps apenas se disponível (não funciona no Expo Go com Nova Arquitetura)
+let MapView: any = null;
+let Marker: any = null;
+try {
+  const Maps = require('react-native-maps');
+  MapView = Maps.default;
+  Marker = Maps.Marker;
+} catch (e) {
+  // Módulo nativo não disponível (Expo Go)
+}
+
+// Placeholder quando o mapa não está disponível
+function MapPlaceholder() {
+  return (
+    <View style={{ flex: 1, backgroundColor: '#e8f0fe', alignItems: 'center', justifyContent: 'center' }}>
+      <MaterialIcons name="map" size={64} color="#003366" style={{ opacity: 0.3 }} />
+      <Text style={{ color: '#003366', opacity: 0.5, marginTop: 8, fontSize: 13 }}>
+        Mapa disponível no app instalado
+      </Text>
+    </View>
+  );
+}
+
+
 
 const { width, height } = Dimensions.get('window');
 const MAP_HEIGHT = height;
 
+function categoryIcon(cat: string) {
+  if (!cat) return 'volunteer-activism';
+  if (cat.includes('ALIMENTO')) return 'restaurant';
+  if (cat.includes('VESTU')) return 'checkroom';
+  if (cat.includes('M')) return 'chair';
+  if (cat.includes('B')) return 'menu-book';
+  return 'volunteer-activism';
+}
+
 export default function MapScreen() {
+  const router = useRouter();
+  const { signOut } = useAuth();
   const [search, setSearch] = useState('');
+  const [donations, setDonations] = useState<any[]>([]);
+  const [featured, setFeatured] = useState<any>(null);
+
+  useEffect(() => {
+    getDonations(null).then((data) => {
+      setDonations(data);
+      if (data.length > 0) setFeatured(data[0]);
+    });
+  }, []);
+
+  const handleLogout = () => {
+    Alert.alert('Sair', 'Deseja encerrar sua sessão?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Sair', style: 'destructive', onPress: () => signOut() },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top']}>
       <View style={styles.container}>
 
         {/* --- MAP LAYER --- */}
-        <MapView
-          style={styles.map}
-          initialRegion={{
-            latitude: -23.5505,
-            longitude: -46.6333,
-            latitudeDelta: 0.05,
-            longitudeDelta: 0.05,
-          }}
-        >
-          <Marker coordinate={{ latitude: -23.5505, longitude: -46.6333 }}>
-            <View style={[styles.markerPin, { backgroundColor: '#003366' }]}>
-              <MaterialIcons name="restaurant" size={16} color="#fff" />
-            </View>
-            <View style={[styles.markerStem, { backgroundColor: '#003366' }]} />
-          </Marker>
-
-          <Marker coordinate={{ latitude: -23.5600, longitude: -46.6400 }}>
-            <View style={[styles.markerPin, { backgroundColor: '#fff', borderColor: '#003366', borderWidth: 2 }]}>
-              <MaterialIcons name="checkroom" size={16} color="#003366" />
-            </View>
-            <View style={[styles.markerStem, { backgroundColor: '#003366' }]} />
-          </Marker>
-        </MapView>
+        {MapView ? (
+          <MapView
+            style={styles.map}
+            initialRegion={{
+              latitude: -23.5505,
+              longitude: -46.6333,
+              latitudeDelta: 0.05,
+              longitudeDelta: 0.05,
+            }}
+          >
+            {donations.filter(d => d.latitude && d.longitude).map((d) => (
+              <Marker key={d.id} coordinate={{ latitude: d.latitude, longitude: d.longitude }}
+                onPress={() => setFeatured(d)}>
+                <View style={[styles.markerPin, { backgroundColor: '#003366' }]}>
+                  <MaterialIcons name={categoryIcon(d.category)} size={16} color="#fff" />
+                </View>
+                <View style={[styles.markerStem, { backgroundColor: '#003366' }]} />
+              </Marker>
+            ))}
+          </MapView>
+        ) : (
+          <MapPlaceholder />
+        )}
 
         {/* --- TOP HEADER CONTENT OVER MAP --- */}
         <View style={styles.headerAbsolute}>
@@ -56,11 +110,11 @@ export default function MapScreen() {
               </View>
             </View>
             <View style={styles.actionsBox}>
-              <TouchableOpacity style={styles.iconBtn}>
-                <MaterialIcons name="share" size={20} color="#003366" />
+              <TouchableOpacity style={styles.iconBtn} onPress={() => router.push('/donate/new' as any)}>
+                <MaterialIcons name="add-circle-outline" size={20} color="#003366" />
               </TouchableOpacity>
-              <TouchableOpacity style={styles.iconBtn}>
-                <MaterialIcons name="notifications" size={20} color="#003366" />
+              <TouchableOpacity style={styles.iconBtn} onPress={handleLogout}>
+                <MaterialIcons name="logout" size={20} color="#003366" />
               </TouchableOpacity>
             </View>
           </View>
@@ -118,34 +172,45 @@ export default function MapScreen() {
 
         {/* --- BOTTOM FLOATING ITEM CARD --- */}
         <View style={styles.bottomCardContainer}>
-          <View style={styles.itemCard}>
-            <View style={styles.itemCardImgBox}>
-              <Image source={{ uri: 'https://lh3.googleusercontent.com/aida-public/AB6AXuBtnSJ3GQ5lFwjuR31Hrkvdr9XyAOwJOamYV9k9Lm_KNmqyixWkBm9y5qf_g20SuPCdv7j0OsxxkhbSdKXTdYUeaZapnV4Knn1aS33--yGehJUGBmLq0jEHMIu7Gu55q0mJUXAq7zHVSlITMT-OpTm-Wvwui3g2mJOf-cqOpJXun8DMtvxiBfybye1O4nMScvmCurFEwjhmcyAZnKTtmoLyNVTNk0aoouZJiDspi7LhWj1d9EEUWKDalTPp6sErBpOIPVMpOTrehuY' }} style={styles.itemCardImg} />
-            </View>
-            <View style={styles.itemCardContent}>
-              <View style={styles.itemBadgeRow}>
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>Disponível</Text>
+          {featured ? (
+            <View style={styles.itemCard}>
+              <View style={styles.itemCardImgBox}>
+                {featured.image_url
+                  ? <Image source={{ uri: featured.image_url }} style={styles.itemCardImg} />
+                  : <View style={[styles.itemCardImg, { backgroundColor: '#e8f0fe', alignItems: 'center', justifyContent: 'center' }]}>
+                    <MaterialIcons name={categoryIcon(featured.category)} size={32} color="#003366" style={{ opacity: 0.4 }} />
+                  </View>
+                }
+              </View>
+              <View style={styles.itemCardContent}>
+                <View style={styles.itemBadgeRow}>
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>Disponível</Text>
+                  </View>
+                  <View style={styles.distanceBadge}>
+                    <MaterialIcons name="label" size={12} color="#94a3b8" />
+                    <Text style={styles.distanceText}>{featured.category}</Text>
+                  </View>
                 </View>
-                <View style={styles.distanceBadge}>
-                  <MaterialIcons name="location-on" size={12} color="#94a3b8" />
-                  <Text style={styles.distanceText}>0.6 km</Text>
+                <Text style={styles.itemCardTitle} numberOfLines={1}>{featured.title}</Text>
+                <Text style={styles.itemCardDesc} numberOfLines={1}>{featured.description ?? '—'}</Text>
+                <View style={styles.itemCardFooter}>
+                  <View style={styles.donorInfo}>
+                    <View style={styles.donorAvatar} />
+                    <Text style={styles.donorName}>{featured.profiles?.name ?? 'Anônimo'}</Text>
+                  </View>
+                  <TouchableOpacity style={styles.btnDetails}
+                    onPress={() => router.push(`/donate/${featured.id}` as any)}>
+                    <Text style={styles.btnDetailsText}>Ver Detalhes</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-              <Text style={styles.itemCardTitle} numberOfLines={1}>Cesta de Alimentos Orgânicos</Text>
-              <Text style={styles.itemCardDesc} numberOfLines={1}>Doação de excedente para famílias necessitadas...</Text>
-
-              <View style={styles.itemCardFooter}>
-                <View style={styles.donorInfo}>
-                  <View style={styles.donorAvatar} />
-                  <Text style={styles.donorName}>Irmão João</Text>
-                </View>
-                <TouchableOpacity style={styles.btnDetails}>
-                  <Text style={styles.btnDetailsText}>Ver Detalhes</Text>
-                </TouchableOpacity>
-              </View>
             </View>
-          </View>
+          ) : (
+            <View style={[styles.itemCard, { justifyContent: 'center', alignItems: 'center', paddingVertical: 20 }]}>
+              <Text style={{ color: '#94a3b8', fontSize: 13 }}>Nenhuma doação disponível ainda</Text>
+            </View>
+          )}
         </View>
 
       </View>

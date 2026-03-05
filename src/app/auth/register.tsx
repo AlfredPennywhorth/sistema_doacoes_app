@@ -1,20 +1,35 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, ScrollView, Platform } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, ScrollView, Platform, ActivityIndicator } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function RegisterScreen() {
     const router = useRouter();
+    const { signUp } = useAuth();
     const [name, setName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleRegister = () => {
-        // Navigate back to the home/map after register for mockup
-        router.replace('/(tabs)');
+    const handleRegister = async () => {
+        if (!name || !email || !password) {
+            setError('Preencha nome, e-mail e senha.');
+            return;
+        }
+        setLoading(true);
+        setError(null);
+        const { error } = await signUp(email, password, name, phone);
+        setLoading(false);
+        if (error) {
+            setError(error);
+        } else {
+            router.replace('/(tabs)');
+        }
     };
 
     return (
@@ -110,12 +125,15 @@ export default function RegisterScreen() {
 
                     {/* Footer Actions */}
                     <View style={styles.footer}>
-                        <TouchableOpacity style={styles.registerBtn} onPress={handleRegister} activeOpacity={0.8}>
-                            <Text style={styles.registerBtnText}>Criar Conta</Text>
+                        {error && <Text style={styles.errorText}>{error}</Text>}
+                        <TouchableOpacity style={[styles.registerBtn, loading && { opacity: 0.7 }]} onPress={handleRegister} disabled={loading} activeOpacity={0.8}>
+                            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.registerBtnText}>Criar Conta</Text>}
                         </TouchableOpacity>
                         <Text style={styles.termsText}>
-                            Ao se cadastrar, você concorda com nossos{'\n'}
-                            <Text style={styles.termsLink}>Termos de Uso</Text> e <Text style={styles.termsLink}>Privacidade</Text>.
+                            Ao se cadastrar, você concorda com nossos{'\\n'}
+                            <Text style={styles.termsLink} onPress={() => router.push('/legal/terms' as any)}>Termos de Uso</Text>
+                            {' '}e{' '}
+                            <Text style={styles.termsLink} onPress={() => router.push('/legal/privacy' as any)}>Privacidade</Text>.
                         </Text>
                     </View>
 
@@ -249,5 +267,11 @@ const styles = StyleSheet.create({
         color: '#0f2cbd',
         fontWeight: '600',
         textDecorationLine: 'underline',
-    }
+    },
+    errorText: {
+        color: '#dc2626',
+        fontSize: 13,
+        textAlign: 'center',
+        marginBottom: 8,
+    },
 });

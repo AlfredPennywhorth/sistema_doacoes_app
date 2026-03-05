@@ -1,19 +1,138 @@
-import React, { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Platform, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, ScrollView, Platform, KeyboardAvoidingView, ActivityIndicator, Alert, Modal, Image } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '@/hooks/useAuth';
+import { createDonation } from '@/services/databaseService';
+import { supabase } from '@/config/supabase';
 
 export default function NewDonationScreen() {
     const router = useRouter();
+    const { user } = useAuth();
     const [title, setTitle] = useState('');
     const [category, setCategory] = useState('');
+    const [showCategoryModal, setShowCategoryModal] = useState(false);
     const [description, setDescription] = useState('');
-    const [ttl, setTtl] = useState('1');
+    const [ttl, setTtl] = useState('7');
+    const [loading, setLoading] = useState(false);
+    const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+    const [locationLoading, setLocationLoading] = useState(false);
+    const [photoUri, setPhotoUri] = useState<string | null>(null);
+    const [photoUploading, setPhotoUploading] = useState(false);
 
-    const handlePublish = () => {
-        // Navigate back to showcase/map after publish for mockup
-        router.replace('/(tabs)');
+    const CATEGORIES = ['ALIMENTOS', 'VESTUÁRIO', 'MÓVEIS', 'BÍBLIAS/HINOS', 'OUTROS'];
+
+    useEffect(() => { captureLocation(); }, []);
+
+    const captureLocation = async () => {
+        setLocationLoading(true);
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted') {
+            const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+            setLocation({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+        }
+        setLocationLoading(false);
+    };
+
+    const pickImage = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permissão necessária', 'Permita o acesso à galeria de fotos.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+        });
+        if (!result.canceled && result.assets[0]) {
+            setPhotoUri(result.assets[0].uri);
+        }
+    };
+
+    const takePhoto = async () => {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permissão necessária', 'Permita o acesso à câmera.');
+            return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.7,
+        });
+        if (!result.canceled && result.assets[0]) {
+            setPhotoUri(result.assets[0].uri);
+        }
+    };
+
+    const openPhotoOptions = () => {
+        Alert.alert('Adicionar Foto', '', [
+            { text: 'Câmera', onPress: takePhoto },
+            { text: 'Galeria', onPress: pickImage },
+            { text: 'Cancelar', style: 'cancel' },
+        ]);
+    };
+
+    const uploadPhoto = async (uri: string): Promise<string | null> => {
+        try {
+            setPhotoUploading(true);
+            const response = await fetch(uri);
+            const blob = await response.blob();
+            const filename = `donations/${Date.now()}.jpg`;
+            const { error } = await supabase.storage
+                .from('donation-images')
+                .upload(filename, blob, { contentType: 'image/jpeg', upsert: true });
+            if (error) { console.error('Upload error', error); return null; }
+            const { data: { publicUrl } } = supabase.storage
+                .from('donation-images')
+                .getPublicUrl(filename);
+            return publicUrl;
+        } catch (e) {
+            console.error('Upload failed', e);
+            return null;
+        } finally {
+            setPhotoUploading(false);
+        }
+    };
+
+    const handlePublish = async () => {
+        if (!title || !category) {
+            Alert.alert('Atenção', 'Preencha o título e a categoria.');
+            return;
+        }
+        if (!user) return;
+        setLoading(true);
+        let image_url = null;
+        if (photoUri) {
+            image_url = await uploadPhoto(photoUri);
+        }
+        const expires = new Date();
+        expires.setDate(expires.getDate() + parseInt(ttl));
+        const result = await createDonation({
+            title,
+            category,
+            description,
+            ttl_days: parseInt(ttl),
+            expires_at: expires.toISOString(),
+            latitude: location?.latitude ?? null,
+            longitude: location?.longitude ?? null,
+            user_id: user.id,
+            status: 'available',
+            image_url,
+        });
+        setLoading(false);
+        if (result.success) {
+            Alert.alert('✅ Publicado!', 'Sua doação foi publicada com sucesso!', [
+                { text: 'OK', onPress: () => router.replace('/(tabs)/list') }
+            ]);
+        } else {
+            Alert.alert('Erro', result.error ?? 'Não foi possível publicar.');
+        }
     };
 
     return (
@@ -48,12 +167,28 @@ export default function NewDonationScreen() {
                         <Text style={styles.sectionTitleCenter}>Adicionar Foto</Text>
                         <Text style={styles.sectionSubtitle}>Mostre para a irmandade o que você deseja doar!</Text>
 
-                        <TouchableOpacity style={styles.photoUploadBox} activeOpacity={0.7}>
-                            <View style={styles.camIconWrapper}>
-                                <MaterialIcons name="add-a-photo" size={36} color="#fff" />
-                            </View>
-                            <Text style={styles.uploadTextBold}>Tire uma foto ou escolha da galeria</Text>
-                            <Text style={styles.uploadTextHelper}>Até 5 fotos nítidas</Text>
+                        <TouchableOpacity style={styles.photoUploadBox} activeOpacity={0.7} onPress={openPhotoOptions}>
+                            {photoUri ? (
+                                <>
+                                    <Image source={{ uri: photoUri }} style={styles.photoPreview} />
+                                    <TouchableOpacity style={styles.removePhoto} onPress={() => setPhotoUri(null)}>
+                                        <MaterialIcons name="close" size={16} color="#fff" />
+                                    </TouchableOpacity>
+                                    {photoUploading && (
+                                        <View style={styles.uploadingOverlay}>
+                                            <ActivityIndicator color="#fff" />
+                                        </View>
+                                    )}
+                                </>
+                            ) : (
+                                <>
+                                    <View style={styles.camIconWrapper}>
+                                        <MaterialIcons name="add-a-photo" size={36} color="#fff" />
+                                    </View>
+                                    <Text style={styles.uploadTextBold}>Tire uma foto ou escolha da galeria</Text>
+                                    <Text style={styles.uploadTextHelper}>Toque para adicionar</Text>
+                                </>
+                            )}
                         </TouchableOpacity>
                     </View>
 
@@ -77,16 +212,11 @@ export default function NewDonationScreen() {
 
                         <View style={styles.formGroup}>
                             <Text style={styles.label}>CATEGORIA</Text>
-                            <View style={styles.pickerWrapper}>
-                                <TextInput
-                                    style={styles.input}
-                                    placeholder="Selecione uma categoria"
-                                    placeholderTextColor="#94a3b8"
-                                    editable={false} // Would use a Picker in real app
-                                    value={category}
-                                />
-                                <MaterialIcons name="expand-more" size={24} color="#94a3b8" style={styles.pickerIcon} />
-                            </View>
+                            <TouchableOpacity style={styles.input} onPress={() => setShowCategoryModal(true)}>
+                                <Text style={{ color: category ? '#0f172a' : '#94a3b8', fontSize: 15 }}>
+                                    {category || 'Selecione uma categoria'}
+                                </Text>
+                            </TouchableOpacity>
                         </View>
 
                         <View style={styles.formGroup}>
@@ -134,17 +264,40 @@ export default function NewDonationScreen() {
                             </View>
                             <View>
                                 <Text style={styles.locationLabel}>LOCAL DE COLETA</Text>
-                                <Text style={styles.locationValue}>Capturado Automaticamente</Text>
+                                <Text style={styles.locationValue}>
+                                    {locationLoading ? 'Obtendo localização...' : location ? `${location.latitude.toFixed(4)}, ${location.longitude.toFixed(4)}` : 'Não obtido'}
+                                </Text>
                             </View>
                         </View>
-                        <MaterialIcons name="my-location" size={24} color="#003366" />
+                        <TouchableOpacity onPress={captureLocation}>
+                            {locationLoading
+                                ? <ActivityIndicator color="#003366" />
+                                : <MaterialIcons name="my-location" size={24} color="#003366" />}
+                        </TouchableOpacity>
                     </View>
 
-                    {/* Publish Button */}
-                    <TouchableOpacity style={styles.publishBtn} onPress={handlePublish} activeOpacity={0.8}>
-                        <Text style={styles.publishBtnText}>Publicar</Text>
-                        <MaterialIcons name="check-circle" size={20} color="#fff" />
+                    <TouchableOpacity style={[styles.publishBtn, loading && { opacity: 0.7 }]} onPress={handlePublish} disabled={loading} activeOpacity={0.8}>
+                        {loading
+                            ? <ActivityIndicator color="#fff" />
+                            : <><Text style={styles.publishBtnText}>Publicar</Text>
+                                <MaterialIcons name="check-circle" size={20} color="#fff" /></>}
                     </TouchableOpacity>
+
+                    {/* Modal de categoria */}
+                    <Modal visible={showCategoryModal} transparent animationType="slide">
+                        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowCategoryModal(false)} activeOpacity={1}>
+                            <View style={styles.modalContent}>
+                                <Text style={styles.modalTitle}>Selecione a Categoria</Text>
+                                {['ALIMENTOS', 'VESTUÁRIO', 'MÓVEIS', 'BÍBLIAS/HINOS', 'OUTROS'].map((cat) => (
+                                    <TouchableOpacity key={cat} style={styles.modalOption}
+                                        onPress={() => { setCategory(cat); setShowCategoryModal(false); }}>
+                                        <Text style={[styles.modalOptionText, category === cat && styles.modalOptionActive]}>{cat}</Text>
+                                        {category === cat && <MaterialIcons name="check" size={18} color="#003366" />}
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </TouchableOpacity>
+                    </Modal>
 
                 </ScrollView>
             </KeyboardAvoidingView>
@@ -391,5 +544,60 @@ const styles = StyleSheet.create({
         color: '#fff',
         fontSize: 18,
         fontWeight: 'bold',
-    }
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'flex-end',
+    },
+    modalContent: {
+        backgroundColor: '#fff',
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        padding: 24,
+        gap: 8,
+    },
+    modalTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: '#003366',
+        marginBottom: 12,
+    },
+    modalOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 14,
+        borderBottomWidth: 1,
+        borderBottomColor: '#f1f5f9',
+    },
+    modalOptionText: {
+        fontSize: 15,
+        color: '#334155',
+        fontWeight: '500',
+    },
+    modalOptionActive: {
+        color: '#003366',
+        fontWeight: 'bold',
+    },
+    photoPreview: {
+        width: '100%',
+        height: '100%',
+        borderRadius: 22,
+    },
+    removePhoto: {
+        position: 'absolute',
+        top: 10,
+        right: 10,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        borderRadius: 12,
+        padding: 4,
+    },
+    uploadingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        borderRadius: 22,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
 });

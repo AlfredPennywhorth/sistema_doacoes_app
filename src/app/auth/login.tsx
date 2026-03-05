@@ -1,18 +1,33 @@
 import React, { useState } from 'react';
-import { StyleSheet, View, Text, TextInput, TouchableOpacity, Image, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TextInput, TouchableOpacity, Image, KeyboardAvoidingView, Platform, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { MaterialIcons, FontAwesome5 } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function LoginScreen() {
     const router = useRouter();
+    const { signIn } = useAuth();
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    const handleLogin = () => {
-        // Navigate back to the home/map after login for mockup
-        router.replace('/(tabs)');
+    const handleLogin = async () => {
+        if (!email || !password) {
+            setError('Preencha e-mail e senha.');
+            return;
+        }
+        setLoading(true);
+        setError(null);
+        const { error } = await signIn(email, password);
+        setLoading(false);
+        if (error) {
+            setError('E-mail ou senha incorretos.');
+        } else {
+            router.replace('/(tabs)');
+        }
     };
 
     return (
@@ -78,8 +93,10 @@ export default function LoginScreen() {
                             </TouchableOpacity>
                         </View>
 
-                        <TouchableOpacity style={styles.loginBtn} onPress={handleLogin} activeOpacity={0.8}>
-                            <Text style={styles.loginBtnText}>Entrar</Text>
+                        {error && <Text style={styles.errorText}>{error}</Text>}
+
+                        <TouchableOpacity style={[styles.loginBtn, loading && { opacity: 0.7 }]} onPress={handleLogin} disabled={loading} activeOpacity={0.8}>
+                            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.loginBtnText}>Entrar</Text>}
                         </TouchableOpacity>
                     </View>
 
@@ -306,5 +323,11 @@ const styles = StyleSheet.create({
         color: '#143db8',
         fontSize: 14,
         fontWeight: 'bold',
-    }
+    },
+    errorText: {
+        color: '#dc2626',
+        fontSize: 13,
+        textAlign: 'center',
+        marginBottom: 8,
+    },
 });
