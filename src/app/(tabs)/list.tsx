@@ -1,7 +1,7 @@
 import { getDonations, getWarehouses } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator, FlatList, Modal,
     RefreshControl,
@@ -53,11 +53,13 @@ export default function ListScreen() {
         load();
     }, [load]);
 
-    const filteredDonations = donations.filter(item => {
-        if (selectedWarehouse === 'PRIVATE' && item.warehouse_id !== null) return false;
-        if (selectedWarehouse && selectedWarehouse !== 'PRIVATE' && item.warehouse_id !== selectedWarehouse) return false;
-        return true;
-    });
+    const filteredDonations = useMemo(() => {
+        return donations.filter(item => {
+            if (selectedWarehouse === 'PRIVATE' && item.warehouse_id !== null) return false;
+            if (selectedWarehouse && selectedWarehouse !== 'PRIVATE' && item.warehouse_id !== selectedWarehouse) return false;
+            return true;
+        });
+    }, [donations, selectedWarehouse]);
 
     return (
         <SafeAreaView style={styles.safeArea} edges={['top']}>

@@ -85,6 +85,19 @@ export const confirmItemCollection = async (itemId) => {
     return { success: true, data: data[0] };
 };
 
+export const deleteItem = async (itemId) => {
+    const { error } = await supabase
+        .from('items')
+        .delete()
+        .eq('id', itemId);
+
+    if (error) {
+        console.error('[deleteItem] Erro:', error);
+        return { success: false, message: error.message };
+    }
+    return { success: true };
+};
+
 // ─── Minhas Reservas (Requerente) ──────────────────────────────────────────
 
 export const getMyReservations = async (userId) => {
@@ -242,6 +255,21 @@ export const fulfillItemRequest = async (requestId) => {
     }
 };
 
+export const deleteItemRequest = async (requestId) => {
+    try {
+        const { error } = await supabase
+            .from('item_requests')
+            .delete()
+            .eq('id', requestId);
+
+        if (error) throw error;
+        return { success: true };
+    } catch (error) {
+        console.error('[Database] Erro ao excluir pedido:', error.message);
+        return { success: false, error: error.message };
+    }
+};
+
 // ─── Galpões / Almoxarifados ────────────────────────────────────────────────
 
 export const getWarehouses = async (includeInactive = false) => {
@@ -369,4 +397,18 @@ export const getDashboardStats = async (filters = null) => {
         console.error('[Database] Erro ao buscar estatísticas:', error.message);
         return null;
     }
+};
+
+export const getAppConfig = async (key) => {
+    const { data, error } = await supabase
+        .from('app_config')
+        .select('value')
+        .eq('key', key)
+        .single();
+
+    if (error) {
+        console.error('[getAppConfig] Erro:', error);
+        return null;
+    }
+    return data.value;
 };

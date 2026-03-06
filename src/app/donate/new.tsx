@@ -105,19 +105,34 @@ export default function NewDonationScreen() {
     const uploadPhoto = async (uri: string): Promise<string | null> => {
         try {
             setPhotoUploading(true);
-            const response = await fetch(uri);
-            const blob = await response.blob();
             const filename = `donations/${Date.now()}.jpg`;
-            const { error } = await supabase.storage
+
+            const formData = new FormData();
+            formData.append('file', {
+                uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+                type: 'image/jpeg',
+                name: 'upload.jpg',
+            } as any);
+
+            const { data, error } = await supabase.storage
                 .from('donation-images')
-                .upload(filename, blob, { contentType: 'image/jpeg', upsert: true });
-            if (error) { console.error('Upload error', error); return null; }
+                .upload(filename, formData, {
+                    contentType: 'image/jpeg',
+                    upsert: true
+                });
+
+            if (error) {
+                console.error('[Upload] Erro Supabase:', error);
+                return null;
+            }
+
             const { data: { publicUrl } } = supabase.storage
                 .from('donation-images')
                 .getPublicUrl(filename);
+
             return publicUrl;
         } catch (e) {
-            console.error('Upload failed', e);
+            console.error('[Upload] Falha geral:', e);
             return null;
         } finally {
             setPhotoUploading(false);

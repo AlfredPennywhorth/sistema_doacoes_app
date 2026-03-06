@@ -19,6 +19,18 @@ try {
 
 const { width, height } = Dimensions.get('window');
 
+function categoryColor(cat: string) {
+  if (!cat) return '#003366';
+  const c = cat.toUpperCase();
+  if (c.includes('ALIMENTO')) return '#F59E0B'; // Amarelo/Laranja
+  if (c.includes('VESTU')) return '#10B981';    // Verde
+  if (c.includes('MÓVEIS') || c.includes('MOVEIS')) return '#8B5CF6'; // Roxo
+  if (c.includes('HOSPITAL')) return '#EF4444'; // Vermelho
+  if (c.includes('ÓRGÃO') || c.includes('ORGAO')) return '#EC4899'; // Rosa
+  if (c.includes('BRANCA')) return '#3B82F6';   // Azul Claro
+  return '#64748b'; // Cinza para OUTROS
+}
+
 function categoryIcon(cat: string) {
   if (!cat) return 'volunteer-activism';
   const c = cat.toUpperCase();
@@ -39,30 +51,44 @@ export default function MapScreen() {
   const [stats, setStats] = useState<any[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  useEffect(() => {
-    loadData();
+  const loadData = React.useCallback(async () => {
+    try {
+      // Para as estatísticas, queremos ver inclusive itens reservados para entender a "adesão"
+      const data = await getDonations(null, null, true);
+      setDonations(data || []);
+
+      if (data && data.length > 0) {
+        // Agrupar estatísticas por categoria de forma eficiente
+        const categoryMap: { [key: string]: { available: number, reserved: number } } = {};
+
+        data.forEach(d => {
+          if (!categoryMap[d.category]) {
+            categoryMap[d.category] = { available: 0, reserved: 0 };
+          }
+          if (d.status === 'available') categoryMap[d.category].available++;
+          else if (d.status === 'reserved') categoryMap[d.category].reserved++;
+        });
+
+        const newStats = Object.keys(categoryMap).map(cat => ({
+          category: cat,
+          ...categoryMap[cat]
+        })).sort((a, b) => b.available - a.available);
+
+        setStats(newStats);
+      }
+
+      if (user) {
+        const profile = await getProfile(user.id);
+        if (profile?.is_admin) setIsAdmin(true);
+      }
+    } catch (error) {
+      console.error('[MapScreen] Erro ao carregar dados:', error);
+    }
   }, [user]);
 
-  const loadData = async () => {
-    // Para as estatísticas, queremos ver inclusive itens reservados para entender a "adesão"
-    const data = await getDonations(null, null, true);
-    setDonations(data);
-
-    // Agrupar estatísticas por categoria
-    const categoriesSet = new Set(data.map(d => d.category));
-    const newStats = Array.from(categoriesSet).map(cat => ({
-      category: cat,
-      available: data.filter(d => d.category === cat && d.status === 'available').length,
-      reserved: data.filter(d => d.category === cat && d.status === 'reserved').length
-    })).sort((a, b) => b.available - a.available);
-
-    setStats(newStats);
-
-    if (user) {
-      const profile = await getProfile(user.id);
-      if (profile?.is_admin) setIsAdmin(true);
-    }
-  };
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const handleLogout = () => {
     Alert.alert('Sair', 'Deseja encerrar sua sessão?', [
@@ -94,13 +120,13 @@ export default function MapScreen() {
               >
                 <View style={[
                   styles.markerPin,
-                  { backgroundColor: d.status === 'reserved' ? '#94a3b8' : (d.is_urgent ? '#dc2626' : '#003366') }
+                  { backgroundColor: d.status === 'reserved' ? '#cbd5e1' : (d.is_urgent ? '#dc2626' : categoryColor(d.category)) }
                 ]}>
                   <MaterialIcons name={categoryIcon(d.category)} size={16} color="#fff" />
                 </View>
                 <View style={[
                   styles.markerStem,
-                  { backgroundColor: d.status === 'reserved' ? '#94a3b8' : (d.is_urgent ? '#dc2626' : '#003366') }
+                  { backgroundColor: d.status === 'reserved' ? '#cbd5e1' : (d.is_urgent ? '#dc2626' : categoryColor(d.category)) }
                 ]} />
               </Marker>
             ))}
@@ -151,8 +177,8 @@ export default function MapScreen() {
                   style={styles.statCard}
                   onPress={() => router.push({ pathname: '/(tabs)/list', params: { category: s.category } })}
                 >
-                  <View style={styles.statIconBox}>
-                    <MaterialIcons name={categoryIcon(s.category)} size={20} color="#003366" />
+                  <View style={[styles.statIconBox, { backgroundColor: categoryColor(s.category) + '20' }]}>
+                    <MaterialIcons name={categoryIcon(s.category)} size={20} color={categoryColor(s.category)} />
                   </View>
                   <View>
                     <Text style={styles.statCatName}>{s.category}</Text>

@@ -1,8 +1,8 @@
 import { useAuth } from '@/hooks/useAuth';
-import { confirmItemCollection, createItemRequest, getItemRequests, getMyDonations, getMyReservations, releaseItem } from '@/services/databaseService';
+import { confirmItemCollection, createItemRequest, deleteItemRequest, getItemRequests, getMyDonations, getMyReservations, getProfile, releaseItem } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -30,6 +30,7 @@ export default function RequestsScreen() {
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [modalVisible, setModalVisible] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
 
     // Form state
     const [category, setCategory] = useState('OUTROS');
@@ -49,6 +50,9 @@ export default function RequestsScreen() {
             setRequests(reqs);
             setMyReservations(resvs);
             setMyDonations(dons);
+
+            const profile = await getProfile(user.id);
+            if (profile?.is_admin) setIsAdmin(true);
         } catch (error) {
             console.error(error);
         } finally {
@@ -149,6 +153,25 @@ export default function RequestsScreen() {
         );
     };
 
+    const handleDeleteRequest = async (requestId: string) => {
+        Alert.alert(
+            'Excluir Pedido',
+            'Deseja realmente apagar este pedido? Esta ação não pode ser desfeita.',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Excluir',
+                    style: 'destructive',
+                    onPress: async () => {
+                        const result = await deleteItemRequest(requestId);
+                        if (result.success) load();
+                        else Alert.alert('Erro', 'Não foi possível excluir o pedido.');
+                    }
+                }
+            ]
+        );
+    };
+
     const renderItem = ({ item }: { item: any }) => (
         <View style={styles.card}>
             <View style={styles.cardHeader}>
@@ -160,8 +183,15 @@ export default function RequestsScreen() {
             <Text style={styles.cardTitle}>{item.title}</Text>
             {item.description ? <Text style={styles.cardDesc}>{item.description}</Text> : null}
             <View style={styles.requesterInfo}>
-                <MaterialIcons name="person" size={14} color="#64748b" />
-                <Text style={styles.requesterName}>{item.requester?.name || 'Alguém'} está precisando</Text>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <MaterialIcons name="person" size={14} color="#64748b" />
+                    <Text style={styles.requesterName}>{item.requester?.name || 'Alguém'} está precisando</Text>
+                </View>
+                {(item.user_id === user?.id || isAdmin) && (
+                    <TouchableOpacity onPress={() => handleDeleteRequest(item.id)} style={styles.deleteRequestBtn}>
+                        <MaterialIcons name="delete-outline" size={18} color="#dc2626" />
+                    </TouchableOpacity>
+                )}
             </View>
         </View>
     );
@@ -259,12 +289,12 @@ export default function RequestsScreen() {
         </TouchableOpacity>
     );
 
-    const combinedData = [
+    const combinedData = useMemo(() => [
         ...(myReservations.length > 0 ? [{ type: 'header', title: 'Reservados para Você' }, ...myReservations] : []),
         ...(myDonations.length > 0 ? [{ type: 'header', title: 'Suas Doações' }, ...myDonations] : []),
         { type: 'header', title: 'Pedidos da Comunidade' },
         ...requests
-    ];
+    ], [myReservations, myDonations, requests]);
 
     return (
         <SafeAreaView style={styles.container}>
@@ -446,4 +476,8 @@ const styles = StyleSheet.create({
     textArea: { height: 80, textAlignVertical: 'top' },
     submitBtn: { backgroundColor: '#003366', height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 24 },
     submitBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+    deleteRequestBtn: {
+        padding: 4,
+        marginLeft: 10,
+    },
 });

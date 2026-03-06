@@ -1,5 +1,5 @@
 import { useAuth } from '@/hooks/useAuth';
-import { confirmItemCollection, getDonationById, releaseItem, requestItemWithLock } from '@/services/databaseService';
+import { confirmItemCollection, deleteItem, getDonationById, getProfile, releaseItem, requestItemWithLock } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -25,6 +25,7 @@ export default function DonationDetailScreen() {
     const [item, setItem] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [reserving, setReserving] = useState(false);
+    const [isAdmin, setIsAdmin] = useState(false);
     const [feedback, setFeedback] = useState<{ type: FeedbackType; message: string } | null>(null);
 
     const loadItem = React.useCallback(async () => {
@@ -33,6 +34,11 @@ export default function DonationDetailScreen() {
         const data = await getDonationById(id as string);
         console.log('[Detalhes] Dados recebidos:', data);
         setItem(data);
+
+        if (user) {
+            const profile = await getProfile(user.id);
+            if (profile?.is_admin) setIsAdmin(true);
+        }
         setLoading(false);
     }, [id]);
 
@@ -123,6 +129,30 @@ export default function DonationDetailScreen() {
                             loadItem();
                         } else {
                             showFeedback('error', 'Erro ao confirmar retirada.');
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleDeleteItem = async () => {
+        Alert.alert(
+            'Excluir Item',
+            'Deseja realmente apagar este item permanentemente? Esta ação não pode ser desfeita.',
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Excluir',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setReserving(true);
+                        const result = await deleteItem(id);
+                        setReserving(false);
+                        if (result.success) {
+                            router.replace('/(tabs)/list');
+                        } else {
+                            showFeedback('error', 'Erro ao excluir item.');
                         }
                     }
                 }
@@ -304,7 +334,26 @@ export default function DonationDetailScreen() {
                                     <MaterialIcons name="cancel" size={20} color="#dc2626" />
                                     <Text style={styles.cancelReservationText}>Liberar Item (Cancelar Reserva)</Text>
                                 </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.deleteBtn}
+                                    onPress={handleDeleteItem}
+                                >
+                                    <MaterialIcons name="delete-forever" size={20} color="#b91c1c" />
+                                    <Text style={styles.deleteBtnText}>Excluir Item Permanentemente</Text>
+                                </TouchableOpacity>
                             </View>
+                        )}
+
+                        {/* Botão de Excluir para Admin (mesmo que não seja o dono) */}
+                        {isAdmin && item.user_id !== user?.id && (
+                            <TouchableOpacity
+                                style={[styles.deleteBtn, { marginTop: 16 }]}
+                                onPress={handleDeleteItem}
+                            >
+                                <MaterialIcons name="admin-panel-settings" size={20} color="#b91c1c" />
+                                <Text style={styles.deleteBtnText}>Excluir como Administrador</Text>
+                            </TouchableOpacity>
                         )}
 
                         {/* Botão de Cancelar para o Requerente */}
@@ -429,6 +478,13 @@ const styles = StyleSheet.create({
         borderWidth: 1, borderColor: '#fee2e2', backgroundColor: '#fff'
     },
     cancelReservationText: { color: '#dc2626', fontWeight: 'bold', fontSize: 14 },
+
+    deleteBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+        paddingVertical: 14, borderRadius: 12, marginTop: 12,
+        borderWidth: 1, borderColor: '#fca5a5', backgroundColor: '#fef2f2'
+    },
+    deleteBtnText: { color: '#b91c1c', fontWeight: 'bold', fontSize: 14 },
 
     footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#f1f5f9' },
     reserveBtn: {
