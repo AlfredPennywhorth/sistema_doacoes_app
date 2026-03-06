@@ -2,7 +2,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { getDonations, getProfile } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Dimensions, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -48,7 +48,6 @@ export default function MapScreen() {
   const { user, signOut } = useAuth();
   const [search, setSearch] = useState('');
   const [donations, setDonations] = useState<any[]>([]);
-  const [stats, setStats] = useState<any[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
 
   const loadData = React.useCallback(async () => {
@@ -56,26 +55,6 @@ export default function MapScreen() {
       // Para as estatísticas, queremos ver inclusive itens reservados para entender a "adesão"
       const data = await getDonations(null, null, true);
       setDonations(data || []);
-
-      if (data && data.length > 0) {
-        // Agrupar estatísticas por categoria de forma eficiente
-        const categoryMap: { [key: string]: { available: number, reserved: number } } = {};
-
-        data.forEach(d => {
-          if (!categoryMap[d.category]) {
-            categoryMap[d.category] = { available: 0, reserved: 0 };
-          }
-          if (d.status === 'available') categoryMap[d.category].available++;
-          else if (d.status === 'reserved') categoryMap[d.category].reserved++;
-        });
-
-        const newStats = Object.keys(categoryMap).map(cat => ({
-          category: cat,
-          ...categoryMap[cat]
-        })).sort((a, b) => b.available - a.available);
-
-        setStats(newStats);
-      }
 
       if (user) {
         const profile = await getProfile(user.id);
@@ -89,6 +68,34 @@ export default function MapScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const filteredDonations = useMemo(() => {
+    if (!search.trim()) return donations;
+    const s = search.toLowerCase();
+    return donations.filter(d =>
+      d.title?.toLowerCase().includes(s) ||
+      d.category?.toLowerCase().includes(s) ||
+      d.description?.toLowerCase().includes(s)
+    );
+  }, [donations, search]);
+
+  const filteredStats = useMemo(() => {
+    // Agrupar estatísticas das doações filtradas
+    const categoryMap: { [key: string]: { available: number, reserved: number } } = {};
+
+    filteredDonations.forEach(d => {
+      if (!categoryMap[d.category]) {
+        categoryMap[d.category] = { available: 0, reserved: 0 };
+      }
+      if (d.status === 'available') categoryMap[d.category].available++;
+      else if (d.status === 'reserved') categoryMap[d.category].reserved++;
+    });
+
+    return Object.keys(categoryMap).map(cat => ({
+      category: cat,
+      ...categoryMap[cat]
+    })).sort((a, b) => b.available - a.available);
+  }, [filteredDonations]);
 
   const handleLogout = () => {
     Alert.alert('Sair', 'Deseja encerrar sua sessão?', [
@@ -112,7 +119,7 @@ export default function MapScreen() {
               longitudeDelta: 0.1,
             }}
           >
-            {donations.filter(d => d.latitude && d.longitude).map((d) => (
+            {filteredDonations.filter(d => d.latitude && d.longitude).map((d) => (
               <Marker
                 key={d.id}
                 coordinate={{ latitude: d.latitude, longitude: d.longitude }}
@@ -168,10 +175,10 @@ export default function MapScreen() {
         <View style={styles.summaryContainer}>
           <Text style={styles.summaryTitle}>Monitor de Doações</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statsScroll}>
-            {stats.length === 0 ? (
-              <Text style={styles.noStatsText}>Nenhum item cadastrado.</Text>
+            {filteredStats.length === 0 ? (
+              <Text style={styles.noStatsText}>Nenhum item encontrado.</Text>
             ) : (
-              stats.map((s, idx) => (
+              filteredStats.map((s, idx) => (
                 <TouchableOpacity
                   key={idx}
                   style={styles.statCard}
