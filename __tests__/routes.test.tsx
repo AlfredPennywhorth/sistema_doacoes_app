@@ -26,6 +26,11 @@ describe("Public Routes", () => {
     expect(getAuthRedirect(false, false, "settings")).toBe("/auth/login");
   });
 
+  it("allows protected routes in guest test mode", () => {
+    expect(getAuthRedirect(false, false, "(tabs)", true)).toBeNull();
+    expect(getAuthRedirect(false, false, "settings", true)).toBeNull();
+  });
+
   it("redirects authenticated users away from auth routes", () => {
     expect(getAuthRedirect(false, true, "auth")).toBe("/(tabs)");
   });

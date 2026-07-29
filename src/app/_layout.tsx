@@ -26,6 +26,7 @@ export function getAuthRedirect(
   loading: boolean,
   hasUser: boolean,
   firstSegment: string | undefined,
+  allowGuestTestAccess = false,
 ): string | null {
   if (loading) return null;
 
@@ -35,7 +36,7 @@ export function getAuthRedirect(
     : false;
   const inAuthGroup = firstSegment === "auth";
 
-  if (!hasUser && !isPublicRoute) return "/auth/login";
+  if (!hasUser && !isPublicRoute && !allowGuestTestAccess) return "/auth/login";
   if (hasUser && inAuthGroup) return "/(tabs)";
 
   return null;
@@ -47,9 +48,16 @@ function RootLayoutNav() {
   const segments = useSegments();
   const router = useRouter();
   const [appIsReady, setAppIsReady] = useState(false);
+  const allowGuestTestAccess =
+    process.env.EXPO_PUBLIC_ALLOW_GUEST_TEST_ACCESS === "true";
 
   useEffect(() => {
-    const redirectTo = getAuthRedirect(loading, Boolean(user), segments[0]);
+    const redirectTo = getAuthRedirect(
+      loading,
+      Boolean(user),
+      segments[0],
+      allowGuestTestAccess,
+    );
 
     if (redirectTo) {
       router.replace(redirectTo);
@@ -57,7 +65,7 @@ function RootLayoutNav() {
 
     // Sinaliza que a lógica de auth terminou
     setAppIsReady(!loading);
-  }, [user, loading, segments, router]);
+  }, [user, loading, segments, router, allowGuestTestAccess]);
 
   useEffect(() => {
     if (appIsReady) {
