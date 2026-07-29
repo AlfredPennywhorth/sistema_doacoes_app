@@ -3,16 +3,19 @@ import { getDonations, getProfile } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Dimensions, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, Dimensions, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Carrega react-native-maps apenas se disponível
 let MapView: any = null;
 let Marker: any = null;
 try {
-  const Maps = require('react-native-maps');
-  MapView = Maps.default;
-  Marker = Maps.Marker;
+  if (Platform.OS !== 'web') {
+    const dynamicRequire = (0, eval)('require');
+    const Maps = dynamicRequire('react-native-maps');
+    MapView = Maps.default;
+    Marker = Maps.Marker;
+  }
 } catch (e) {
   // Módulo nativo não disponível
 }

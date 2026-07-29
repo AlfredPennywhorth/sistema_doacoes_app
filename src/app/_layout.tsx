@@ -1,13 +1,17 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, useRouter, useSegments } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect, useState } from 'react';
-import 'react-native-reanimated';
+import {
+    DarkTheme,
+    DefaultTheme,
+    ThemeProvider,
+} from "@react-navigation/native";
+import { Stack, useRouter, useSegments } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import { useEffect, useState } from "react";
+import "react-native-reanimated";
 
-import { UpdateHandler } from '@/components/UpdateHandler';
-import { useColorScheme } from '@/hooks/use-color-scheme';
-import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { UpdateHandler } from "@/components/UpdateHandler";
+import { useColorScheme } from "@/hooks/use-color-scheme";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
 
 // Impede que a Splash Screen feche sozinha antes de estarmos prontos
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -15,8 +19,27 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 });
 
 export const unstable_settings = {
-  anchor: '(tabs)',
+  anchor: "(tabs)",
 };
+
+export function getAuthRedirect(
+  loading: boolean,
+  hasUser: boolean,
+  firstSegment: string | undefined,
+): string | null {
+  if (loading) return null;
+
+  const publicRoutes = ["auth", "privacy", "delete-account", "legal"];
+  const isPublicRoute = firstSegment
+    ? publicRoutes.includes(firstSegment)
+    : false;
+  const inAuthGroup = firstSegment === "auth";
+
+  if (!hasUser && !isPublicRoute) return "/auth/login";
+  if (hasUser && inAuthGroup) return "/(tabs)";
+
+  return null;
+}
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
@@ -26,22 +49,14 @@ function RootLayoutNav() {
   const [appIsReady, setAppIsReady] = useState(false);
 
   useEffect(() => {
-    if (loading) return;
+    const redirectTo = getAuthRedirect(loading, Boolean(user), segments[0]);
 
-    const publicRoutes = ['auth', 'privacy', 'delete-account', 'legal'];
-    const isPublicRoute = publicRoutes.includes(segments[0]);
-    const inAuthGroup = segments[0] === 'auth';
-
-    if (!user && !isPublicRoute) {
-      // Não autenticado → vai para login
-      router.replace('/auth/login');
-    } else if (user && inAuthGroup) {
-      // Já autenticado → vai para o app
-      router.replace('/(tabs)');
+    if (redirectTo) {
+      router.replace(redirectTo);
     }
 
     // Sinaliza que a lógica de auth terminou
-    setAppIsReady(true);
+    setAppIsReady(!loading);
   }, [user, loading, segments, router]);
 
   useEffect(() => {
@@ -54,7 +69,7 @@ function RootLayoutNav() {
   }, [appIsReady]);
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="auth/login" options={{ headerShown: false }} />
@@ -66,7 +81,10 @@ function RootLayoutNav() {
         <Stack.Screen name="privacy" options={{ headerShown: false }} />
         <Stack.Screen name="delete-account" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
-        <Stack.Screen name="admin/warehouses" options={{ title: 'Galpões', headerShown: false }} />
+        <Stack.Screen
+          name="admin/warehouses"
+          options={{ title: "Galpões", headerShown: false }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
