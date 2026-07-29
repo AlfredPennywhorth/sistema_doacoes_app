@@ -28,9 +28,11 @@ function RootLayoutNav() {
   useEffect(() => {
     if (loading) return;
 
+    const publicRoutes = ['auth', 'privacy', 'delete-account', 'legal'];
+    const isPublicRoute = publicRoutes.includes(segments[0]);
     const inAuthGroup = segments[0] === 'auth';
 
-    if (!user && !inAuthGroup) {
+    if (!user && !isPublicRoute) {
       // Não autenticado → vai para login
       router.replace('/auth/login');
     } else if (user && inAuthGroup) {
@@ -61,6 +63,9 @@ function RootLayoutNav() {
         <Stack.Screen name="donate/[id]" options={{ headerShown: false }} />
         <Stack.Screen name="legal/terms" options={{ headerShown: false }} />
         <Stack.Screen name="legal/privacy" options={{ headerShown: false }} />
+        <Stack.Screen name="privacy" options={{ headerShown: false }} />
+        <Stack.Screen name="delete-account" options={{ headerShown: false }} />
+        <Stack.Screen name="settings" options={{ headerShown: false }} />
         <Stack.Screen name="admin/warehouses" options={{ title: 'Galpões', headerShown: false }} />
       </Stack>
       <StatusBar style="auto" />

@@ -119,10 +119,10 @@ export default function MapScreen() {
               longitudeDelta: 0.1,
             }}
           >
-            {filteredDonations.filter(d => d.latitude && d.longitude).map((d) => (
+            {filteredDonations.filter(d => d.public_latitude && d.public_longitude).map((d) => (
               <Marker
                 key={d.id}
-                coordinate={{ latitude: d.latitude, longitude: d.longitude }}
+                coordinate={{ latitude: d.public_latitude, longitude: d.public_longitude }}
                 onCalloutPress={() => router.push({ pathname: '/(tabs)/list', params: { category: d.category } })}
               >
                 <View style={[
@@ -165,6 +165,10 @@ export default function MapScreen() {
               <MaterialIcons name="settings" size={22} color="#fff" />
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity style={styles.logoutBtn} onPress={() => router.push('/settings')}>
+            <MaterialIcons name="settings" size={20} color="#003366" />
+          </TouchableOpacity>
 
           <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
             <MaterialIcons name="logout" size={20} color="#003366" />

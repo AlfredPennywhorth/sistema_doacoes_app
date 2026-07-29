@@ -8,6 +8,8 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AddressForm, AddressFormProps } from '@/components/AddressForm';
+import { geocodeAddress, StructuredAddress } from '@/services/api/geocodingApi';
 
 export default function NewDonationScreen() {
     const router = useRouter();
@@ -25,7 +27,7 @@ export default function NewDonationScreen() {
     const [photoUploading, setPhotoUploading] = useState(false);
 
     // Pickup details
-    const [pickupAddress, setPickupAddress] = useState('');
+    const [structuredAddress, setStructuredAddress] = useState<any>({});
     const [pickupInstructions, setPickupInstructions] = useState('');
 
     // Warehouse state
@@ -42,7 +44,6 @@ export default function NewDonationScreen() {
     const CATEGORIES = ['ALIMENTOS', 'ITENS HOSPITALARES', 'LINHA BRANCA', 'MÓVEIS', 'ÓRGÃO ELETRÔNICO', 'VESTUÁRIO', 'OUTROS'];
 
     useEffect(() => {
-        captureLocation();
         loadWarehouses();
     }, []);
 
@@ -167,8 +168,10 @@ export default function NewDonationScreen() {
             reserved_at: selectedRequest ? new Date().toISOString() : null,
             image_url,
             is_urgent: isUrgent,
-            pickup_address: pickupAddress,
             pickup_instructions: pickupInstructions,
+            ...structuredAddress, // this spreads cep, street, number, neighborhood, city, state, reference
+            latitude: location?.latitude ?? null,
+            longitude: location?.longitude ?? null,
         });
         setLoading(false);
         if (result.success) {
@@ -373,34 +376,44 @@ export default function NewDonationScreen() {
                                 <MaterialIcons name="arrow-drop-down" size={24} color="#003366" />
                             </TouchableOpacity>
                         ) : (
-                            <View style={styles.locationBoxSmall}>
-                                <View style={styles.locationInfo}>
-                                    <View style={styles.locationIconBox}>
-                                        <MaterialIcons name="location-on" size={20} color="#003366" />
+                            <View style={styles.addressSection}>
+                                <AddressForm 
+                                  onChange={(addr) => setStructuredAddress(addr)}
+                                />
+                                <View style={styles.locationBoxSmall}>
+                                    <View style={styles.locationInfo}>
+                                        <View style={styles.locationIconBox}>
+                                            <MaterialIcons name="location-on" size={20} color="#003366" />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.locationLabel}>COLETAR NO MEU ENDEREÇO</Text>
+                                            <Text style={styles.locationValue}>
+                                                {locationLoading ? 'Obtendo GPS...' : location ? 'Coordenadas obtidas' : 'Sem coordenadas exatas'}
+                                            </Text>
+                                        </View>
                                     </View>
-                                    <View>
-                                        <Text style={styles.locationLabel}>COLETAR NO MEU ENDEREÇO</Text>
-                                        <Text style={styles.locationValue}>
-                                            {locationLoading ? 'Obtendo GPS...' : location ? 'Coordenadas obtidas' : 'Não obtido'}
-                                        </Text>
+                                    <View style={{flexDirection: 'row', gap: 10}}>
+                                        <TouchableOpacity style={styles.gpsBtn} onPress={captureLocation}>
+                                            <MaterialIcons name="my-location" size={20} color="#fff" />
+                                            <Text style={styles.gpsBtnText}>GPS</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity style={styles.geoBtn} onPress={async () => {
+                                            if (structuredAddress.street && structuredAddress.city && structuredAddress.state) {
+                                                setLocationLoading(true);
+                                                const coords = await geocodeAddress(structuredAddress as StructuredAddress);
+                                                if (coords) setLocation({ latitude: coords.latitude, longitude: coords.longitude });
+                                                else Alert.alert('Ops', 'Não foi possível encontrar as coordenadas para este endereço.');
+                                                setLocationLoading(false);
+                                            } else {
+                                                Alert.alert('Preencha o endereço', 'Preencha rua, cidade e UF antes de buscar no mapa.');
+                                            }
+                                        }}>
+                                            <MaterialIcons name="search" size={20} color="#003366" />
+                                        </TouchableOpacity>
                                     </View>
                                 </View>
-                                <TouchableOpacity onPress={captureLocation}>
-                                    <MaterialIcons name="my-location" size={20} color="#003366" />
-                                </TouchableOpacity>
                             </View>
                         )}
-
-                        <View style={[styles.formGroup, { marginTop: 16 }]}>
-                            <Text style={styles.label}>ENDEREÇO EXATO DE RETIRADA</Text>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Rua, número, bairro, apto, etc."
-                                placeholderTextColor="#94a3b8"
-                                value={pickupAddress}
-                                onChangeText={setPickupAddress}
-                            />
-                        </View>
 
                         <View style={styles.formGroup}>
                             <Text style={styles.label}>HORÁRIOS E INSTRUÇÕES DE ACESSO</Text>
@@ -458,7 +471,6 @@ export default function NewDonationScreen() {
                                     <TouchableOpacity key={w.id} style={styles.modalOption}
                                         onPress={() => {
                                             setSelectedWarehouseId(w.id);
-                                            setPickupAddress(w.address); // Auto-fill address
                                             setShowWarehouseModal(false);
                                         }}>
                                         <View>
@@ -610,6 +622,9 @@ const styles = StyleSheet.create({
     matchActions: { marginTop: 16, gap: 12 },
     matchConfirmBtn: { height: 50, backgroundColor: '#059669', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
     matchConfirmText: { color: '#fff', fontWeight: 'bold' },
-    matchSkipBtn: { height: 40, alignItems: 'center', justifyContent: 'center' },
     matchSkipText: { color: '#64748b', fontWeight: '600' },
+    addressSection: { marginTop: 16, gap: 12 },
+    gpsBtn: { flexDirection: 'row', backgroundColor: '#003366', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignItems: 'center', gap: 4 },
+    gpsBtnText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+    geoBtn: { backgroundColor: 'rgba(0,51,102,0.1)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignItems: 'center', justifyContent: 'center' }
 });

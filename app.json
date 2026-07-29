@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "sistema_doacoes_app",
+    "name": "Sistema de Doações",
     "slug": "sistema_doacoes_app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -22,14 +22,11 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.alfredpennywhorth.sistema_doacoes_app",
       "config": {
-        "googleMaps": {
-          "apiKey": "AIzaSyBf32-QrllZM_jeZunwB5TtFzrecxJXNEk"
-        }
+        "googleMaps": {}
       },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
-        "ACCESS_FINE_LOCATION",
-        "FOREGROUND_SERVICE"
+        "ACCESS_FINE_LOCATION"
       ]
     },
     "web": {

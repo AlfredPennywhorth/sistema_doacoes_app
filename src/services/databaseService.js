@@ -55,17 +55,39 @@ export const createDonation = async (itemData) => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return { error: 'Não autenticado' };
 
-    const { data, error } = await supabase
-        .from('items')
-        .insert([{
-            ...itemData,
-            user_id: user.id,
-            status: 'available'
-        }])
-        .select();
+    const { data, error } = await supabase.rpc('create_donation_with_pickup_details', {
+        p_title: itemData.title,
+        p_description: itemData.description,
+        p_category: itemData.category,
+        p_image_url: itemData.image_url,
+        p_warehouse_id: itemData.warehouse_id,
+        p_cep: itemData.cep,
+        p_street: itemData.street,
+        p_number: itemData.number,
+        p_complement: itemData.complement,
+        p_neighborhood: itemData.neighborhood,
+        p_city: itemData.city,
+        p_state: itemData.state,
+        p_reference_point: itemData.reference_point,
+        p_latitude: itemData.latitude,
+        p_longitude: itemData.longitude,
+        p_instructions: itemData.pickup_instructions
+    });
 
-    if (error) { console.error('Erro ao criar doação', error); return { error: error.message }; }
-    return { success: true, data: data[0] };
+    if (error) { console.error('Erro ao criar doação via RPC', error); return { error: error.message }; }
+    
+    // Como a RPC retorna uuid, buscamos o item recém-criado
+    const { data: createdItem, error: fetchErr } = await supabase
+      .from('items')
+      .select('*')
+      .eq('id', data)
+      .single();
+
+    if (fetchErr) {
+       console.error('Erro ao buscar doação criada', fetchErr); return { error: fetchErr.message }; 
+    }
+
+    return { success: true, data: createdItem };
 };
 
 export const confirmItemCollection = async (itemId) => {
@@ -273,9 +295,9 @@ export const deleteItemRequest = async (requestId) => {
 // ─── Galpões / Almoxarifados ────────────────────────────────────────────────
 
 export const getWarehouses = async (includeInactive = false) => {
-    let query = supabase
+        let query = supabase
         .from('warehouses')
-        .select('*');
+        .select('id, name, address, latitude, longitude, is_active, created_at');
 
     if (!includeInactive) {
         query = query.eq('is_active', true);
@@ -316,9 +338,9 @@ export const updateWarehouse = async (id, updates) => {
 // ─── Perfis e Admin ─────────────────────────────────────────────────────────
 
 export const getProfile = async (userId) => {
-    const { data, error } = await supabase
+        const { data, error } = await supabase
         .from('profiles')
-        .select('*')
+        .select('id, name, avatar_url, phone, role')
         .eq('id', userId)
         .single();
 
@@ -332,7 +354,7 @@ export const getDashboardStats = async (filters = null) => {
     try {
         const { data, error } = await supabase
             .from('items')
-            .select('*');
+            .select('id, category, status, collected_at, created_at');
 
         if (error) throw error;
 
