@@ -88,7 +88,7 @@ export default function LoginScreen() {
               <MaterialIcons name="arrow-back-ios" size={20} color="#0f172a" />
             </TouchableOpacity>
             <Text style={styles.appBarTitle}>Login</Text>
-            <View style={{ width: 48 }} /> {/* Placeholder to center title */}
+            <View style={{ width: 48 }} />
           </View>
 
           <View style={styles.headerArea}>
