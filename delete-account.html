@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Solicitação de Exclusão de Conta e Dados - Sistema de Doações</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            line-height: 1.6;
+            color: #334155;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background-color: #f8fafc;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        h1 {
+            color: #0f172a;
+            font-size: 1.75rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid #e2e8f0;
+            padding-bottom: 1rem;
+        }
+        p, li {
+            font-size: 0.95rem;
+            color: #475569;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        label {
+            display: block;
+            font-weight: 600;
+            color: #0f172a;
+            margin-bottom: 0.5rem;
+        }
+        input[type="email"], textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+        textarea {
+            resize: vertical;
+            height: 100px;
+        }
+        button {
+            background-color: #dc2626;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            transition: background-color 0.2s;
+        }
+        button:hover {
+            background-color: #b91c1c;
+        }
+        .info-box {
+            background-color: #f1f5f9;
+            border-left: 4px solid #64748b;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 2rem;
+            margin-bottom: 1.5rem;
+        }
+        .info-title {
+            font-weight: bold;
+            color: #0f172a;
+            margin-bottom: 5px;
+        }
+        footer {
+            margin-top: 3rem;
+            text-align: center;
+            font-size: 0.825rem;
+            color: #94a3b8;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 1.5rem;
+        }
+        .success-message {
+            display: none;
+            background-color: #d1fae5;
+            color: #065f46;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 1.5rem;
+            font-weight: 500;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Solicitar Exclusão de Conta</h1>
+        
+        <p>Preencha o formulário abaixo para solicitar a exclusão definitiva de sua conta e de todos os dados pessoais associados ao aplicativo <span style="font-weight: bold; color: #1e3a8a;">Sistema de Doações</span>.</p>
+
+        <div id="successMessage" class="success-message">
+            Sua solicitação foi enviada com sucesso! Analisaremos o pedido e todos os dados associados serão removidos em até 30 dias.
+        </div>
+
+        <form id="deleteForm" onsubmit="handleSubmit(event)">
+            <div class="form-group">
+                <label for="email">Endereço de E-mail cadastrado:</label>
+                <input type="email" id="email" required placeholder="seuemail@exemplo.com">
+            </div>
+
+            <div class="form-group">
+                <label for="reason">Motivo da exclusão (Opcional):</label>
+                <textarea id="reason" placeholder="Conte-nos o motivo se desejar..."></textarea>
+            </div>
+
+            <button type="submit">Excluir minha Conta e Dados</button>
+        </form>
+
+        <div class="info-box">
+            <div class="info-title">Quais dados são excluídos?</div>
+            <p style="margin: 0; font-size: 0.875rem;">
+                Ao concluir esta solicitação, serão permanentemente deletados dos nossos servidores ativos no Supabase: seu nome completo, e-mail, telefone, histórico de doações postadas, histórico de interesses em doações e registros de localização (coordenadas GPS) gerados no app. O processo é irreversível e concluído em até <strong>30 dias</strong>, em conformidade com o Artigo 16 da LGPD.
+            </p>
+        </div>
+
+        <footer>
+            &copy; 2026 Sistema de Doações. Todos os direitos reservados.
+        </footer>
+    </div>
+
+    <script>
+        function handleSubmit(event) {
+            event.preventDefault();
+            
+            // Simula o recebimento do formulário (em produção, o desenvolvedor DPO pode receber por e-mail ou webhook)
+            document.getElementById('deleteForm').style.display = 'none';
+            document.getElementById('successMessage').style.display = 'block';
+            
+            // Aqui pode ser adicionada uma integração para disparar um e-mail de notificação para o DPO
+            const email = document.getElementById('email').value;
+            console.log('Solicitação de exclusão para o e-mail: ' + email);
+        }
+    </script>
+</body>
+</html>
