@@ -8,6 +8,27 @@ Documentacao oficial:
 - https://supabase.com/docs/guides/platform/backups
 - https://supabase.com/docs/guides/platform/migrating-within-supabase/backup-restore
 
+## ALERTA IMPORTANTE: usuario real no Auth
+
+O comando `supabase db dump` tem filtros para esquemas gerenciados
+(inclusive `auth` e `storage`) por padrao; portanto, **nao considerar
+`roles.sql`, `schema.sql` e `data.sql` como copia comprovadamente completa
+das contas em `auth.users`/ `auth.identities`**. A exportacao de dados do
+Auth, incluindo hashes de senha, deve ser feita e VALIDADA separadamente com
+ferramenta compativel de PostgreSQL (por exemplo `pg_dump` limitado a `auth`,
+em ambiente seguro) ou metodo oficial de restauracao que inclua Auth, antes de
+alteracoes destrutivas. **Nao executar `pg_restore` no projeto ativo.**
+
+A documentacao do CLI informa as exclusoes padrao:
+https://supabase.com/docs/reference/cli/introduction
+A documentacao da migracao de usuarios confirma que dados Auth e hashes
+de senha requerem tratamento especial:
+https://supabase.com/kb/troubleshooting/migrating-auth-users-between-projects
+
+Para a migracao incremental planejada aqui, nenhuma tabela de Auth sera
+modificada; ainda assim, **o objetivo de seguranca e um backup realmente
+recuperavel**, com restauracao verificada em ambiente separado.
+
 ## Dados que precisamos preservar
 
 - Usuarios e credenciais existentes no Auth (`auth.users` e demais dados do Auth).
@@ -68,7 +89,7 @@ unset SUPABASE_DB_URL
 ls -lh "$BACKUP_DIR"/{roles,schema,data}.sql
 ```
 
-Verificar se cada comando terminou sem erro, se os tres arquivos foram
+Estes tres arquivos sao o primeiro checkpoint de backup. **Antes de migrar, verificar se `auth.users` e `auth.identities` foram realmente incluidos em alguma copia recuperavel.** Nao presumir isso com base nos nomes dos arquivos.\n\nVerificar se cada comando terminou sem erro, se os tres arquivos foram
 criados e se os arquivos `schema.sql` e `data.sql` nao estao vazios.
 **Tamanho nao garante restauracao valida**: conferir via restauracao
 em banco de testes ou validação de restauração isolada conforme guia oficial.
@@ -90,7 +111,7 @@ objetos dos buckets de forma independente; nao apagar o bucket.
 ## Gate para executar SQL
 
 Informacoes seguras que o usuario pode compartilhar:
-`roles: OK | schema: OK | data: OK | restauracao: OK/pendente | arquivos: OK/pendente`.
+`roles: OK | schema: OK | data: OK | auth: OK/pendente | restauracao: OK/pendente | arquivos: OK/pendente`.
 
 O SQL rascunho `supabase/pending/20261105_secure_donations_draft.sql`
 **nao deve ser executado ate que o backup externo esteja confirmado**.
