@@ -47,6 +47,12 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.content}>
+        <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/help')}>
+          <MaterialIcons name="help-outline" size={24} color="#003366" />
+          <Text style={styles.menuText}>Como usar o aplicativo</Text>
+          <MaterialIcons name="chevron-right" size={24} color="#cbd5e1" />
+        </TouchableOpacity>
+
         <TouchableOpacity style={styles.menuItem} onPress={() => router.push('/legal/privacy')}>
           <MaterialIcons name="privacy-tip" size={24} color="#64748b" />
           <Text style={styles.menuText}>Política de Privacidade</Text>
