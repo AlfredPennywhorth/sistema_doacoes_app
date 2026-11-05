@@ -340,7 +340,7 @@ export const updateWarehouse = async (id, updates) => {
 export const getProfile = async (userId) => {
         const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, avatar_url, phone, role')
+        .select('id, name, is_admin')
         .eq('id', userId)
         .single();
 
