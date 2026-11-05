@@ -30,7 +30,7 @@ export function getAuthRedirect(
 ): string | null {
   if (loading) return null;
 
-  const publicRoutes = ["auth", "privacy", "delete-account", "legal"];
+  const publicRoutes = ["auth", "privacy", "delete-account", "legal", "help"];
   const isPublicRoute = firstSegment
     ? publicRoutes.includes(firstSegment)
     : false;
@@ -89,6 +89,7 @@ function RootLayoutNav() {
         <Stack.Screen name="privacy" options={{ headerShown: false }} />
         <Stack.Screen name="delete-account" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ headerShown: false }} />
+        <Stack.Screen name="help" options={{ headerShown: false }} />
         <Stack.Screen
           name="admin/warehouses"
           options={{ title: "Galpões", headerShown: false }}
