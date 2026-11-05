@@ -20,6 +20,33 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Preflight: profiles.is_admin inexistente';
   END IF;
+  IF NOT EXISTS (
+      SELECT 1
+      FROM pg_trigger t
+      JOIN pg_proc p ON p.oid = t.tgfoid
+      WHERE t.tgrelid = 'auth.users'::regclass
+        AND t.tgname = 'on_auth_user_created'
+        AND NOT t.tgisinternal
+        AND p.prosecdef IS TRUE
+  ) THEN
+    RAISE EXCEPTION 'Preflight: gatilho de cadastro nao possui funcao SECURITY DEFINER';
+  END IF;
+  IF EXISTS (
+      SELECT 1
+      FROM (VALUES
+        ('warehouses','id'), ('warehouses','latitude'), ('warehouses','longitude'),
+        ('item_requests','id'), ('item_requests','user_id'),
+        ('item_requests','status'), ('item_requests','category')
+      ) AS required(table_name,column_name)
+      WHERE NOT EXISTS (
+        SELECT 1 FROM information_schema.columns col
+        WHERE col.table_schema = 'public'
+          AND col.table_name = required.table_name
+          AND col.column_name = required.column_name
+      )
+  ) THEN
+    RAISE EXCEPTION 'Preflight: warehouses ou item_requests com colunas incompletas';
+  END IF;
 END $$;
 
 -- 1. Apenas localizacao PUBLICA fica na tabela consultada pela vitrine.
