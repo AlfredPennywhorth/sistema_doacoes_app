@@ -16,7 +16,7 @@ try {
     MapView = Maps.default;
     Marker = Maps.Marker;
   }
-} catch (e) {
+} catch {
   // Módulo nativo não disponível
 }
 

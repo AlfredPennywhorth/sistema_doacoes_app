@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { lookupAddressByCep, AddressByCep } from '../services/api/addressApi';
-import { getBrazilianStates, getCitiesByState, BrazilianState, BrazilianCity } from '../services/api/ibgeApi';
+import { View, Text, TextInput, StyleSheet, ActivityIndicator } from 'react-native';
+import { lookupAddressByCep } from '../services/api/addressApi';
 
 export interface AddressFormProps {
   initialValues?: any;
@@ -28,7 +27,7 @@ export const AddressForm: React.FC<AddressFormProps> = ({ initialValues, onChang
 
   useEffect(() => {
     onChange({ cep, street, number, complement, neighborhood, state, city, reference });
-  }, [cep, street, number, complement, neighborhood, state, city, reference]);
+  }, [cep, street, number, complement, neighborhood, state, city, reference, onChange]);
 
   const handleCepChange = (text: string) => {
     // simple mask

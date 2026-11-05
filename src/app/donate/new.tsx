@@ -49,6 +49,9 @@ export default function NewDonationScreen() {
 
   // Pickup details
   const [structuredAddress, setStructuredAddress] = useState<any>({});
+  const handleAddressChange = React.useCallback((address: any) => {
+    setStructuredAddress(address);
+  }, []);
   const [pickupInstructions, setPickupInstructions] = useState("");
 
   // Warehouse state
@@ -154,7 +157,7 @@ export default function NewDonationScreen() {
         name: "upload.jpg",
       } as any);
 
-      const { data, error } = await supabase.storage
+      const { error } = await supabase.storage
         .from("donation-images")
         .upload(filename, formData, {
           contentType: "image/jpeg",
@@ -505,7 +508,7 @@ export default function NewDonationScreen() {
               </TouchableOpacity>
             ) : (
               <View style={styles.addressSection}>
-                <AddressForm onChange={(addr) => setStructuredAddress(addr)} />
+                <AddressForm onChange={handleAddressChange} />
                 <View style={styles.locationBoxSmall}>
                   <View style={styles.locationInfo}>
                     <View style={styles.locationIconBox}>

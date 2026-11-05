@@ -40,7 +40,7 @@ export default function DonationDetailScreen() {
             if (profile?.is_admin) setIsAdmin(true);
         }
         setLoading(false);
-    }, [id]);
+    }, [id, user]);
 
     useEffect(() => {
         if (id) loadItem();
