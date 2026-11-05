@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta name="theme-color" content="#003366" />
+    <meta name="description" content="Sistema de Doações — conectando doadores a pessoas que precisam de itens." />
+    <title>%WEB_TITLE%</title>
+    <link rel="icon" type="image/png" href="/icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    <style>
+      html, body, #root {
+        width: 100%;
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      #root {
+        display: flex;
+        flex: 1;
+      }
+    </style>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('/service-worker.js')
+            .catch(function (error) {
+              console.warn('[PWA] Nao foi possivel registrar o service worker:', error);
+            });
+        });
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
