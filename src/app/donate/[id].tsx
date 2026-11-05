@@ -30,9 +30,7 @@ export default function DonationDetailScreen() {
 
     const loadItem = React.useCallback(async () => {
         setLoading(true);
-        console.log('[Detalhes] Solicitando ID:', id);
         const data = await getDonationById(id as string);
-        console.log('[Detalhes] Dados recebidos:', data);
         setItem(data);
 
         if (user) {
