@@ -99,7 +99,12 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
   SELECT
-    NULLIF(trim(concat_ws(' ', d.street, d.address_number, d.address_complement)), ''),
+    NULLIF(concat_ws(', ',
+      NULLIF(trim(concat_ws(' ', d.street, d.address_number, d.address_complement)), ''),
+      NULLIF(d.neighborhood, ''),
+      NULLIF(trim(concat_ws(' ', d.city, d.state)), ''),
+      NULLIF(d.cep, '')
+    ), ''),
     d.pickup_instructions,
     p.phone
   FROM public.items AS i
