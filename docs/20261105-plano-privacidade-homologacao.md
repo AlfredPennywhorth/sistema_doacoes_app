@@ -106,3 +106,39 @@ A proposta foi atualizada para:
 Consulta somente leitura: `supabase/diagnostics/20261105_signup_trigger_gate.sql`.
 
 **Nao rodar a migracao em rascunho antes de backup, verificacao do trigger e testes.**
+
+## Checkpoint de backup e revisao (05/11/2026)
+
+- Responsavel confirmou que **salvou copias externas dos backups**. O
+  `pg_dump -Fc` de 285 KB terminou sem erro e o `pg_restore -l`
+  identificou entradas `TABLE DATA` em `auth.users`,
+  `auth.identities`, `public.profiles`, `public.items`.
+- Isso **nao comprova** restauracao, existencia de linhas nessas tabelas,
+  integridade da copia baixada ou copia dos objetos fisicos do Storage.
+  Manter pendente o teste de legibilidade/descompactacao e, antes da
+  publicacao, restauracao isolada e verificacao de objetos do Storage.
+- A migracao continua bloqueada: o rascunho ainda nao foi executado.
+
+### Pendencias identificadas na revisao estatica
+
+1. **Vinculo pedido-doacao:** a nova RPC marca `item_requests.status`
+   como `fulfilled`, mas `items` nao registra `request_id`. Ao
+   liberar a reserva, o cliente tenta reabrir um pedido por `requestId`
+   recebido separadamente, sem transacao conjunta. Exige reconciliacao
+   de modelo e API para impedir pedido permanentemente atendido ou
+   reabertura indevida.
+2. **Compatibilidade de versoes:** o cliente da branch depende das RPCs
+   e colunas novas; o cliente anterior pode depender de INSERT/UPDATE
+   direto em `items`. O corte de grants deve ser coordenado com
+   publicacao e homologacao.
+3. **Completude de seguranca:** revisar RLS e grants de `item_requests`,
+   `warehouses`, buckets do Storage e eventuais funcoes antigas;
+   restringir apenas `items`/`profiles` nao garante protecao
+   integral do aplicativo.
+4. **Validacao de uso:** testar doador, reservante, terceiro nao
+   autorizado, visitante, registro de nova conta, upload de foto,
+   associacao a pedido e cancelamento, em ambiente isolado, antes de
+   autorizar execucao no projeto ativo.
+
+As pendencias nao devem ser contornadas com mudancas no banco de
+producao nem exclusao dos 11 itens de teste.
