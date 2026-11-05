@@ -60,7 +60,7 @@ export default function DonationDetailScreen() {
         }
 
         setReserving(true);
-        const result = await requestItemWithLock(id, user.id);
+        const result = await requestItemWithLock(id);
         setReserving(false);
 
         if (result.success) {
