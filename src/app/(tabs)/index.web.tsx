@@ -1,4 +1,5 @@
 import { useAuth } from '@/hooks/useAuth';
+import { getPublicMapCoordinates } from '@/utils/publicMapCoordinates';
 import { getDonations, getProfile } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -118,14 +119,7 @@ export default function MapScreenWeb() {
 
   const donationsWithPublicLocation = useMemo(
     () =>
-      filteredDonations.filter((item) => {
-        if (item.public_latitude == null || item.public_longitude == null ||
-            item.public_latitude === '' || item.public_longitude === '') return false;
-        const lat = Number(item.public_latitude);
-        const lng = Number(item.public_longitude);
-        return Number.isFinite(lat) && Number.isFinite(lng) &&
-          lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
-      }),
+      filteredDonations.filter((item) => getPublicMapCoordinates(item) !== null),
     [filteredDonations]
   );
 
@@ -195,9 +189,10 @@ export default function MapScreenWeb() {
     const coordinates: [number, number][] = [];
 
     donationsWithPublicLocation.forEach((item) => {
-      const lat = Number(item.public_latitude);
-      const lng = Number(item.public_longitude);
-      coordinates.push([lng, lat]);
+      const point = getPublicMapCoordinates(item);
+      if (!point) return;
+      const [lng, lat] = point;
+      coordinates.push(point);
 
       const marker = new MapLibre.Marker({ color: categoryColor(item.category) })
         .setLngLat([lng, lat])
