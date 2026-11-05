@@ -71,6 +71,55 @@ read -r -s -p "Cole a URI de conexao do Supabase Doacoes: " SUPABASE_DB_URL
 printf '\n'
 ```
 
+## Checkpoint confirmado em 05/11/2026
+
+A exportacao com `pg_dump -Fc` **sem filtros `-n`** terminou sem erros, utilizando senha interativa e o Session pooler. O arquivo `doacoes-pre-migracao.dump` tem 285 KB. `pg_restore -l` confirmou entradas `TABLE DATA` para:
+
+- `auth.users` e `auth.identities` (contas reais);
+- `public.profiles` (perfis reais);
+- `public.items` (11 itens de teste).
+
+**Atencao:** a permissao observada no arquivo foi `-rw-r--r--`.
+Corrigir com `chmod 600 "$BACKUP_DIR/doacoes-pre-migracao.dump"`,
+confirmando `-rw-------`, antes de qualquer outra operacao.
+
+A listagem de TOC nao demonstra que cada tabela tenha linhas ou que uma
+restauracao tenha sido bem-sucedida. Para detectar falhas de leitura ou
+descompressao no arquivo, sem restaurar no banco ativo:
+
+```bash
+docker run --rm \
+  --mount "type=bind,src=$BACKUP_DIR,dst=/backup,readonly" \
+  --entrypoint pg_restore \
+  public.ecr.aws/supabase/postgres:17.11.0.011 \
+  --data-only --file=/dev/null /backup/doacoes-pre-migracao.dump \
+  && echo "Arquivo legivel: OK"
+```
+
+O teste acima apenas gera SQL para `/dev/null` dentro do container.
+**Nao equivale a teste de restauracao em banco isolado.**
+
+Depois da verificacao, criptografar a copia antes de baixá-la, por
+exemplo com GPG (se instalado no Codespaces):
+
+```bash
+command -v gpg
+gpg --symmetric --cipher-algo AES256 \
+  --output "$BACKUP_DIR/doacoes-pre-migracao.dump.gpg" \
+  "$BACKUP_DIR/doacoes-pre-migracao.dump"
+chmod 600 "$BACKUP_DIR/doacoes-pre-migracao.dump.gpg"
+ls -lh "$BACKUP_DIR"/doacoes-pre-migracao.dump*
+```
+
+Guardar a senha de criptografia separadamente em gerenciador de senhas.
+Baixar o arquivo `.gpg` para armazenamento externo protegido (fora do
+repositório Git e de artefatos CI). Conferir que a copia foi baixada e pode
+ser descriptografada; depois avaliar a remocao dos arquivos nao
+criptografados do Codespaces.
+
+**Gate:** exportacao OK; legibilidade/restauracao externa/Storage ainda
+pendentes. Nenhuma migracao executada.
+
 ## Alternativa validada: pg_dump com senha interativa
 
 Em 05/11/2026 o teste de conexao com `psql -W` no Codespaces
