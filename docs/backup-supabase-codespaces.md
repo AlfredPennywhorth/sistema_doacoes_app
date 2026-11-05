@@ -71,6 +71,57 @@ read -r -s -p "Cole a URI de conexao do Supabase Doacoes: " SUPABASE_DB_URL
 printf '\n'
 ```
 
+## Alternativa validada: pg_dump com senha interativa
+
+Em 05/11/2026 o teste de conexao com `psql -W` no Codespaces
+**funcionou** (resultado `postgres|postgres`) usando:
+- host `aws-1-sa-east-1.pooler.supabase.com`;
+- porta `5432`, usuario `postgres.uiszfmbmavofaecdwwxb`;
+- imagem `public.ecr.aws/supabase/postgres:17.11.0.011`.
+
+As tentativas anteriores via `SUPABASE_DB_URL` falharam, mas o teste
+interativo confirmou acesso. Nao e necessario redefinir a senha.
+
+A primeira copia deve incluir `public`, `auth` (usuarios reais) e
+metadados de `storage`. A senha sera solicitada pelo proprio PostgreSQL,
+sem URI nem variavel `PGPASSWORD`:
+
+```bash
+BACKUP_DIR="/home/codespace/doacoes-backup-trSymlDU"
+umask 077
+docker run --rm -it \
+  --user "$(id -u):$(id -g)" \
+  --mount "type=bind,src=$BACKUP_DIR,dst=/backup" \
+  -e PGSSLMODE=require \
+  --entrypoint pg_dump \
+  public.ecr.aws/supabase/postgres:17.11.0.011 \
+  -h aws-1-sa-east-1.pooler.supabase.com -p 5432 \
+  -U postgres.uiszfmbmavofaecdwwxb -d postgres -W \
+  -Fc -n public -n auth -n storage \
+  -f /backup/doacoes-pre-migracao.dump
+```
+
+Verificar o tamanho e se o arquivo contem dados de `auth.users`,
+`auth.identities`, `public.items` e `public.profiles`, sem exibir
+conteudo:
+
+```bash
+ls -lh "$BACKUP_DIR/doacoes-pre-migracao.dump"
+docker run --rm \
+  --mount "type=bind,src=$BACKUP_DIR,dst=/backup,readonly" \
+  --entrypoint pg_restore \
+  public.ecr.aws/supabase/postgres:17.11.0.011 \
+  -l /backup/doacoes-pre-migracao.dump \
+  | grep -E 'TABLE DATA (auth (users|identities)|public (items|profiles))'
+```
+
+Esse arquivo **nao e um backup completo validado**: pode faltar
+objetos fora dos tres esquemas, configuracoes do projeto, roles globais
+e arquivos reais dos buckets. `pg_dump -n` nao garante que todas as
+dependencias para restauracao isolada estejam incluidas. Sem teste de
+restauracao em ambiente separado, o gate continua pendente. Nao executar
+`pg_restore` no banco ativo.
+
 ## Passo 3. Fazer backup com CLI v3
 
 Versao confirmada no Codespaces em 05/11/2026: Supabase CLI 3.0.0, Node v24.22.2 e Docker disponivel.
