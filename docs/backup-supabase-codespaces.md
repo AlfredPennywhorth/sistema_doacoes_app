@@ -71,18 +71,26 @@ read -r -s -p "Cole a URI de conexao do Supabase Doacoes: " SUPABASE_DB_URL
 printf '\n'
 ```
 
-## Passo 3. Fazer backup
+## Passo 3. Fazer backup com CLI v3
+
+Versao confirmada no Codespaces em 05/11/2026: Supabase CLI 3.0.0, Node v24.22.2 e Docker disponivel.
+
+A CLI v3 usa a flag --remote=<postgres-url> para direcionar um comando a banco hospedado. A flag --db-url esta depreciada; sem --remote, o comando usa banco local por padrao.
+
+Referencia: https://supabase.com/docs/guides/local-development/cli/migrating-to-v3
+
 
 ```bash
-npx --yes supabase@latest db dump --db-url "$SUPABASE_DB_URL" \
-  -f "$BACKUP_DIR/roles.sql" --role-only
+npx --yes supabase@3.0.0 db dump \
+  -f "$BACKUP_DIR/roles.sql" --role-only --remote="$SUPABASE_DB_URL"
 
-npx --yes supabase@latest db dump --db-url "$SUPABASE_DB_URL" \
-  -f "$BACKUP_DIR/schema.sql"
+npx --yes supabase@3.0.0 db dump \
+  -f "$BACKUP_DIR/schema.sql" --remote="$SUPABASE_DB_URL"
 
-npx --yes supabase@latest db dump --db-url "$SUPABASE_DB_URL" \
+npx --yes supabase@3.0.0 db dump \
   -f "$BACKUP_DIR/data.sql" --data-only --use-copy \
-  -x "storage.buckets_vectors" -x "storage.vector_indexes"
+  -x "storage.buckets_vectors" -x "storage.vector_indexes" \
+  --remote="$SUPABASE_DB_URL"
 
 unset SUPABASE_DB_URL
 
