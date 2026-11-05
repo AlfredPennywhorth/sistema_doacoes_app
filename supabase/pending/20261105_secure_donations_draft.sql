@@ -10,8 +10,9 @@ DO $$
 BEGIN
   IF to_regclass('public.items') IS NULL OR
      to_regclass('public.profiles') IS NULL OR
-     to_regclass('public.warehouses') IS NULL THEN
-    RAISE EXCEPTION 'Preflight: items, profiles ou warehouses inexistente';
+     to_regclass('public.warehouses') IS NULL OR
+     to_regclass('public.item_requests') IS NULL THEN
+    RAISE EXCEPTION 'Preflight: items, profiles, warehouses ou item_requests inexistente';
   END IF;
   IF NOT EXISTS (
       SELECT 1 FROM information_schema.columns
@@ -93,7 +94,10 @@ CREATE OR REPLACE FUNCTION public.create_donation_with_pickup_details(
   p_warehouse_id uuid, p_cep text, p_street text, p_number text,
   p_complement text, p_neighborhood text, p_city text, p_state char(2),
   p_reference_point text, p_latitude double precision,
-  p_longitude double precision, p_instructions text
+  p_longitude double precision, p_instructions text,
+  p_ttl_days integer DEFAULT 7,
+  p_is_urgent boolean DEFAULT false,
+  p_request_id uuid DEFAULT NULL
 ) RETURNS uuid
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -105,12 +109,32 @@ DECLARE
   v_public_lat double precision;
   v_public_lng double precision;
   v_precision text;
+  v_requested_by uuid;
 BEGIN
   IF v_user_id IS NULL THEN
     RAISE EXCEPTION 'Autenticacao obrigatoria';
   END IF;
   IF NULLIF(trim(p_title), '') IS NULL OR NULLIF(trim(p_category), '') IS NULL THEN
     RAISE EXCEPTION 'Titulo e categoria obrigatorios';
+  END IF;
+  IF p_ttl_days IS NULL OR p_ttl_days < 1 OR p_ttl_days > 365 THEN
+    RAISE EXCEPTION 'Validade deve estar entre 1 e 365 dias';
+  END IF;
+
+  IF p_request_id IS NOT NULL THEN
+    -- Travar o pedido para impedir duas doacoes simultaneas para ele.
+    SELECT r.user_id INTO v_requested_by
+    FROM public.item_requests AS r
+    WHERE r.id = p_request_id
+      AND r.status = 'open'
+      AND r.category = p_category
+    FOR UPDATE;
+    IF NOT FOUND THEN
+      RAISE EXCEPTION 'Pedido inexistente, atendido ou de categoria diferente';
+    END IF;
+    IF v_requested_by = v_user_id THEN
+      RAISE EXCEPTION 'Nao e permitido reservar doacao para o proprio pedido';
+    END IF;
   END IF;
 
   IF p_warehouse_id IS NOT NULL THEN
@@ -131,11 +155,17 @@ BEGIN
   END IF;
 
   INSERT INTO public.items
-    (user_id, title, description, category, image_url, status, warehouse_id,
-     city, state, public_latitude, public_longitude, location_precision, created_at)
+    (user_id, title, description, category, image_url, status, requested_by,
+     reserved_at, warehouse_id, city, state, public_latitude, public_longitude,
+     location_precision, ttl_days, expires_at, is_urgent, created_at)
   VALUES
-    (v_user_id, trim(p_title), p_description, p_category, p_image_url, 'available',
-     p_warehouse_id, p_city, p_state, v_public_lat, v_public_lng, v_precision, now())
+    (v_user_id, trim(p_title), p_description, p_category, p_image_url,
+     CASE WHEN v_requested_by IS NULL THEN 'available' ELSE 'reserved' END,
+     v_requested_by,
+     CASE WHEN v_requested_by IS NULL THEN NULL ELSE now() END,
+     p_warehouse_id, p_city, p_state, v_public_lat, v_public_lng,
+     v_precision, p_ttl_days, now() + (p_ttl_days * interval '1 day'),
+     COALESCE(p_is_urgent, false), now())
   RETURNING id INTO v_id;
 
   IF p_warehouse_id IS NULL AND
@@ -148,16 +178,21 @@ BEGIN
       (v_id, p_cep, p_street, p_number, p_complement, p_neighborhood, p_city,
        p_state, p_reference_point, p_latitude, p_longitude, p_instructions);
   END IF;
+
+  IF p_request_id IS NOT NULL THEN
+    UPDATE public.item_requests SET status = 'fulfilled' WHERE id = p_request_id;
+  END IF;
+
   RETURN v_id;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.create_donation_with_pickup_details(
   text, text, text, text, uuid, text, text, text, text, text, text, character, text,
-  double precision, double precision, text
+  double precision, double precision, text, integer, boolean, uuid
 ) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.create_donation_with_pickup_details(
   text, text, text, text, uuid, text, text, text, text, text, text, character, text,
-  double precision, double precision, text
+  double precision, double precision, text, integer, boolean, uuid
 ) TO authenticated;
 
 -- 5. Operacoes autorizadas sem UPDATE direto na tabela publica.
@@ -276,6 +311,7 @@ BEGIN
   END LOOP;
 END $$;
 
+NOTIFY pgrst, 'reload schema';
 COMMIT;
 
 -- ATENCAO: depois do COMMIT testar com 2 contas e visitante:
