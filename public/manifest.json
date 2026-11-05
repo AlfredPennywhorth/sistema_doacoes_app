@@ -1,0 +1,21 @@
+{
+  "name": "Sistema de Doações",
+  "short_name": "Doações",
+  "description": "Plataforma filantrópica para conectar doadores a pessoas que precisam de itens.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#ffffff",
+  "theme_color": "#003366",
+  "categories": ["social", "lifestyle"],
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
