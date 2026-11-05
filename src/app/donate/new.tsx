@@ -4,7 +4,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { geocodeAddress, StructuredAddress } from "@/services/api/geocodingApi";
 import {
     createDonation,
-    fulfillItemRequest,
     getItemRequests,
     getWarehouses,
 } from "@/services/databaseService";
@@ -193,21 +192,16 @@ export default function NewDonationScreen() {
     if (photoUri) {
       image_url = await uploadPhoto(photoUri);
     }
-    const expires = new Date();
-    expires.setDate(expires.getDate() + parseInt(ttl));
     const result = await createDonation({
       title,
       category,
       description,
       ttl_days: parseInt(ttl),
-      expires_at: expires.toISOString(),
       latitude: location?.latitude ?? null,
       longitude: location?.longitude ?? null,
       user_id: user.id,
       warehouse_id: useWarehouse ? selectedWarehouseId : null,
-      status: selectedRequest ? "reserved" : "available",
-      requested_by: selectedRequest ? selectedRequest.user_id : null,
-      reserved_at: selectedRequest ? new Date().toISOString() : null,
+      request_id: selectedRequest?.id ?? null,
       image_url,
       is_urgent: isUrgent,
       pickup_instructions: pickupInstructions,
@@ -215,11 +209,7 @@ export default function NewDonationScreen() {
     });
     setLoading(false);
     if (result.success) {
-      // Se foi através de um match, desativa o pedido
-      if (selectedRequest) {
-        await fulfillItemRequest(selectedRequest.id);
-      }
-
+      // A RPC reserva a doacao e atende o pedido na mesma transacao.
       Alert.alert(
         "Parabéns",
         selectedRequest
