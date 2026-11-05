@@ -40,3 +40,50 @@
 - Nao aplicar `DELETE FROM items` sem escopo e aprovacao; para a limpeza futura, identificar inequivocamente os IDs de teste.
 - Nao publicar o aplicativo com as atuais permissoes amplas sobre coordenadas, enderecos e telefones.
 - Gate: branch de homologacao → testes → aprovacao funcional/institucional → autorizacao explicita → publicacao.
+
+## Resultado da auditoria de GRANTs (05/11/2026)
+
+A checagem `has_column_privilege` devolveu `true` para `anon` e
+`authenticated` em `items.latitude`, `items.longitude`,
+`items.pickup_address`, `items.pickup_instructions` e `profiles.phone`.
+Esse resultado mede concessoes SQL; **nao prova acesso efetivo anonimo** porque
+as politicas RLS tambem sao consideradas. As politicas `SELECT USING (true)`
+para autenticados tornam a exposicao de linhas a esses usuarios possivel.
+
+### Correcao preparada, nao aplicada
+
+- `supabase/pending/20261105_secure_donations_draft.sql`: migracao transacional
+  **em rascunho**. Cria `item_pickup_details`, copia dados legados sem apagar os
+  originais, adiciona colunas publicas, aplica grants de coluna e inclui RPCs
+  autenticadas de reserva/retirada/contato.
+- `src/services/databaseService.js`: consultas de listagem e detalhes passaram
+  a usar lista explicita de campos publicos. Endereco e contato sao obtidos apenas
+  via RPC autorizada. Operacoes de reserva/liberacao/conclusao/exclusao usam RPCs.
+- `__tests__/donations-privacy-gate.test.ts`: teste estatico para impedir que
+  SELECT * e joins diretos com telefone retornem.
+
+**Dependencia critica:** o cliente atualizado precisa das novas colunas e RPCs.
+**Nao atualizar o Codespaces para testar navegacao com esse codigo antes de
+alinharmos o banco**. O SQL esta em `supabase/pending`, nao em
+`supabase/migrations`, justamente para evitar aplicacao acidental.
+
+### Sequencia obrigatoria
+
+1. Confirmar os gatilhos que criam `profiles` na inscricao e as funcoes
+   existentes por assinatura, evitando interromper cadastro e demais fluxos.
+2. Fazer backup externo verificavel dos dados e do Storage. Nenhuma credencial
+   ou dump com dados pessoais deve ser registrado no Git.
+3. Revisar o rascunho de SQL, executar os testes Jest/lint e preparar uma janela
+   sem novos cadastros nem reservas durante a aplicacao.
+4. Aplicar o SQL em uma transacao no projeto Supabase de Doacoes apenas apos
+   aprovacao expressa. Se alguma assertiva de grants falhar, a transacao
+   inteira devera ser revertida.
+5. Atualizar a branch no Codespaces, recompilar a PWA e homologar com **duas
+   contas distintas**: vitrine nao recebe endereco/telefone, reservante
+   autorizado recebe contato, usuario nao autorizado nao recebe detalhes
+   privados, somente dono confirma a retirada, e anon nao acessa dados.
+6. Se o cadastro real de contas deixar de funcionar por algum grant de perfil,
+   interromper a homologacao e revisar o gatilho/politica antes de liberar uso.
+7. Prosseguir para Microsoft Store somente depois de testes funcionais e
+   seguranca aprovados. Excluir as 11 doacoes **somente apos publicacao
+   concluida**, preservando auth.users e profiles.
