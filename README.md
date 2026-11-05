@@ -23,7 +23,7 @@ Aplicativo de **doações de bens materiais**, desenvolvido com Expo/React Nativ
 - Central de Ajuda acessível em `/help`, inclusive sem login.
 - Política em `/privacy` e solicitação de exclusão em `/delete-account`, ambas públicas no roteamento.
 - Função `delete-user` e migrações para dados de retirada privados e limpeza de conta — **deploy e comportamento real exigem validação no Supabase**.
-- Estrutura PWA inicial: manifesto, service worker, HTML de registro, ícone e mapa web baseado em Leaflet/OpenStreetMap.
+- Estrutura PWA inicial: manifesto, service worker, HTML de registro, ícone e mapa web baseado em MapLibre GL JS + OpenFreeMap (dados de OpenStreetMap, sem consultar diretamente os servidores comunitários de imagens).
 
 A existência de arquivos no repositório **não comprova** que a infraestrutura remota, políticas RLS, exclusão de contas, permissões e distribuição estejam homologadas.
 
@@ -133,7 +133,7 @@ Usar `.env.example` como referência; não publicar credenciais de administraç�
 
 **Identidade Microsoft:** o nome do produto deve ser reservado no Partner Center. **Package ID**, **Publisher ID** e **Publisher display name** só são necessários na etapa de gerar o pacote no PWABuilder; não devem ser inventados.
 
-**Situação após o gate de 05/11/2026:** corrigida a referência à aba inexistente `explore`; configuração `web.output = "single"` e bypass de login desativado em `.env.production`. O template `public/index.html` e a verificação `npm run verify:pwa` foram adicionados posteriormente e ainda exigem **nova exportação no Codespaces**. Permanecem pendentes: homologação funcional do mapa/Leaflet e do login em navegador anônimo; ícones PWA de 192×192 e 512×512; verificação de rotas diretas no host HTTPS. O sucesso da exportação, isoladamente, não autoriza o deploy.
+**Situação após o gate de 05/11/2026:** o Expo Doctor, Jest, lint, exportação SPA e `npm run verify:pwa` foram aprovados. A referência à aba `explore` foi removida, `web.output = "single"` está configurado e o bypass de login está desativado em `.env.production`. O mapa-base web retornou 403 ao solicitar imagens diretamente aos servidores comunitários do OSM; a branch agora utiliza MapLibre/OpenFreeMap, **ainda sem novo teste no navegador**. A lista atual mostra itens sem `public_latitude`/`public_longitude`; isso exige verificar as migrações e os dados de localização pública, sem expor coordenadas residenciais. Permanecem pendentes: homologação funcional do novo mapa e login; ícones PWA de 192×192 e 512×512; rotas diretas no host HTTPS. Exportar com sucesso não autoriza o deploy.
 
 ## Publicação Google Play — Android
 
