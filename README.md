@@ -47,7 +47,7 @@ Para facilitar a adesão, manter a ajuda acessível antes do login e por **Confi
 | Banco e políticas | `supabase/migrations/` |
 | Funções de servidor | `supabase/functions/` |
 | Testes | `__tests__/` |
-| PWA | `public/manifest.json`, `public/service-worker.js` e `src/app/+html.tsx` |
+| PWA | `public/manifest.json`, `public/service-worker.js`, `public/index.html` (SPA) e `src/app/+html.tsx` (renderização estática) |
 | Configuração do aplicativo | `app.json` e `app.config.js` |
 | Build Android | `eas.json` |
 
@@ -89,6 +89,7 @@ npm run test -- --runInBand
 npm run lint
 npx expo-doctor
 npx expo export --platform web
+npm run verify:pwa
 ```
 
 - Não usar `--force` ou `--legacy-peer-deps` para mascarar conflitos de dependências.
@@ -123,7 +124,7 @@ Usar `.env.example` como referência; não publicar credenciais de administraç�
 
 1. Completar manifesto, ícones PWA, service worker e registro no HTML, mantendo cache restrito a recursos estáticos e sem armazenar dados pessoais ou chamadas autenticadas em cache público.
 2. Homologar o mapa web com **apenas coordenadas públicas** e o fluxo de doação/reserva, inclusive navegação por URL direta.
-3. Definir e validar o modo de exportação/roteamento web. A branch iniciou com `app.json → expo.web.output = "static"`; avaliar `"single"` para rotas dinâmicas como `/donate/[id]`, com fallback de SPA no host. **A alteração só será considerada concluída após teste.**
+3. Utilizar `expo.web.output = "single"` para suportar rotas dinâmicas como `/donate/[id]`, com fallback de SPA no host. O template **`public/index.html`** é a entrada para manifesto, metadados e registro do service worker; `src/app/+html.tsx` não substitui esse template no modo SPA. Após exportar, executar `npm run verify:pwa` e validar as rotas diretamente no navegador.
 4. Verificar no Microsoft Edge, também em janela anônima: `/`, `/help`, `/privacy`, `/delete-account`, login, Vitrine, Pedidos e detalhes de um item existente.
 5. Confirmar que o site utiliza HTTPS, funciona como PWA instalável e não tem avisos críticos de manifesto, service worker, console, CSP, conteúdo misto ou cache.
 6. Publicar a versão web validada em host HTTPS e verificar novamente as rotas públicas sem login.
@@ -132,7 +133,7 @@ Usar `.env.example` como referência; não publicar credenciais de administraç�
 
 **Identidade Microsoft:** o nome do produto deve ser reservado no Partner Center. **Package ID**, **Publisher ID** e **Publisher display name** só são necessários na etapa de gerar o pacote no PWABuilder; não devem ser inventados.
 
-**Pendências técnicas identificadas:** eliminar referência à aba inexistente `explore`; validar integridade/carregamento do CSS do Leaflet; concluir ícones PWA de dimensões adequadas; desligar bypass de login em produção; revisar exportação de rota dinâmica. O sucesso do comando de exportação, isoladamente, não autoriza o deploy.
+**Situação após o gate de 05/11/2026:** corrigida a referência à aba inexistente `explore`; configuração `web.output = "single"` e bypass de login desativado em `.env.production`. O template `public/index.html` e a verificação `npm run verify:pwa` foram adicionados posteriormente e ainda exigem **nova exportação no Codespaces**. Permanecem pendentes: homologação funcional do mapa/Leaflet e do login em navegador anônimo; ícones PWA de 192×192 e 512×512; verificação de rotas diretas no host HTTPS. O sucesso da exportação, isoladamente, não autoriza o deploy.
 
 ## Publicação Google Play — Android
 
