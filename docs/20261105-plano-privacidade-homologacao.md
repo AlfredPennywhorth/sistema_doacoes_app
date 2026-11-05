@@ -87,3 +87,22 @@ alinharmos o banco**. O SQL esta em `supabase/pending`, nao em
 7. Prosseguir para Microsoft Store somente depois de testes funcionais e
    seguranca aprovados. Excluir as 11 doacoes **somente apos publicacao
    concluida**, preservando auth.users e profiles.
+
+## Verificacao estrutural complementar (05/11/2026)
+
+Resultado informado no Supabase:
+
+- `public.items`: `id`, `title`, `category` e `user_id` sao obrigatorios. As demais colunas do cadastro atual admitem `NULL` ou possuem valor padrao; o SQL proposto nao precisa reconstruir `items`.
+- `auth.users`: existe gatilho `on_auth_user_created` que executa `handle_new_user()`. **Ainda falta confirmar `pg_proc.prosecdef` e proprietario da funcao** antes de revogar `INSERT/UPDATE` de `profiles`.
+- `create_donation_with_pickup_details`, `reserve_donation`, `release_donation`, `complete_donation` e `delete_donation`: nenhuma dessas funcoes existe no banco consultado. O SQL novo as cria, sem substituir implementacoes antigas.
+
+A proposta foi atualizada para:
+- Preservar prazo `ttl_days`, `expires_at` e flag `is_urgent`.
+- Vincular nova doacao a um pedido aberto da mesma categoria, bloqueando a linha do pedido com `FOR UPDATE`, marcando a doacao como reservada e atendendo o pedido **na mesma transacao**.
+- Tomar o beneficiario da reserva a partir da linha de `item_requests`, nunca de um ID de usuario escolhido pelo cliente.
+- Recusar a transacao se o trigger de cadastro nao possuir `SECURITY DEFINER` ou as colunas exigidas de `warehouses` e `item_requests` estiverem ausentes.
+- Notificar o PostgREST para recarregar o cache de esquema quando a transacao for confirmada.
+
+Consulta somente leitura: `supabase/diagnostics/20261105_signup_trigger_gate.sql`.
+
+**Nao rodar a migracao em rascunho antes de backup, verificacao do trigger e testes.**
