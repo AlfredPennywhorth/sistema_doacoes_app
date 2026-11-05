@@ -1,15 +1,30 @@
 import { supabase } from '../config/supabase';
 
+// Campos liberados para consultas gerais: nunca selecionar '*' da tabela items.
+// GRANTs previstos em supabase/pending/20261105_secure_donations_draft.sql.
+const PUBLIC_ITEM_COLUMNS = [
+  'id', 'title', 'category', 'description', 'status', 'image_url',
+  'ttl_days', 'expires_at', 'user_id', 'requested_by', 'reserved_at',
+  'created_at', 'is_urgent', 'collected_at', 'warehouse_id',
+  'city', 'state', 'public_latitude', 'public_longitude', 'location_precision'
+].join(',');
+
+const getAuthorizedPickup = async (itemId) => {
+  const { data, error } = await supabase.rpc('get_donation_pickup', { p_item_id: itemId });
+  if (error) {
+    console.error('[getAuthorizedPickup] Falha ao consultar dados autorizados:', error.code || error.message);
+    return null;
+  }
+  return Array.isArray(data) ? (data[0] || null) : null;
+};
+
+
 // ─── Itens / Doações ────────────────────────────────────────────────────────
 
 export const getDonations = async (category = null, warehouseId = null, includeReserved = false) => {
     let query = supabase
         .from('items')
-        .select(`
-            *,
-            donor:profiles!user_id(name, phone),
-            warehouse:warehouses(name, address)
-        `);
+        .select(`${PUBLIC_ITEM_COLUMNS},donor:profiles!user_id(name),warehouse:warehouses(name,address)`);
 
     if (includeReserved) {
         query = query.in('status', ['available', 'reserved']);
@@ -35,11 +50,7 @@ export const getDonations = async (category = null, warehouseId = null, includeR
 export const getDonationById = async (id) => {
     const { data, error } = await supabase
         .from('items')
-        .select(`
-            *,
-            donor:profiles!user_id(name, phone),
-            warehouse:warehouses(name, address)
-        `)
+        .select(`${PUBLIC_ITEM_COLUMNS},donor:profiles!user_id(name),warehouse:warehouses(name,address)`)
         .eq('id', id);
 
     if (error) {
@@ -48,7 +59,19 @@ export const getDonationById = async (id) => {
     }
 
     if (!data || data.length === 0) return null;
-    return data[0];
+
+    const item = data[0];
+    // O servidor libera telefone e endereco somente para doador ou reservante.
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const pickup = await getAuthorizedPickup(item.id);
+      if (pickup) {
+        item.pickup_address = pickup.pickup_address;
+        item.pickup_instructions = pickup.pickup_instructions;
+        item.donor = { ...item.donor, phone: pickup.donor_phone };
+      }
+    }
+    return item;
 };
 
 export const createDonation = async (itemData) => {
@@ -79,7 +102,7 @@ export const createDonation = async (itemData) => {
     // Como a RPC retorna uuid, buscamos o item recém-criado
     const { data: createdItem, error: fetchErr } = await supabase
       .from('items')
-      .select('*')
+      .select(PUBLIC_ITEM_COLUMNS)
       .eq('id', data)
       .single();
 
@@ -91,31 +114,17 @@ export const createDonation = async (itemData) => {
 };
 
 export const confirmItemCollection = async (itemId) => {
-    const { data, error } = await supabase
-        .from('items')
-        .update({
-            status: 'donated',
-            collected_at: new Date().toISOString()
-        })
-        .eq('id', itemId)
-        .select();
-
-    if (error) {
-        console.error('[confirmItemCollection] Erro:', error);
-        return { success: false, message: error.message };
+    const { data, error } = await supabase.rpc('complete_donation', { p_item_id: itemId });
+    if (error || data !== true) {
+        return { success: false, message: error?.message || 'Apenas o doador pode confirmar a retirada de um item reservado.' };
     }
-    return { success: true, data: data[0] };
+    return { success: true };
 };
 
 export const deleteItem = async (itemId) => {
-    const { error } = await supabase
-        .from('items')
-        .delete()
-        .eq('id', itemId);
-
-    if (error) {
-        console.error('[deleteItem] Erro:', error);
-        return { success: false, message: error.message };
+    const { data, error } = await supabase.rpc('delete_donation', { p_item_id: itemId });
+    if (error || data !== true) {
+        return { success: false, message: error?.message || 'Voce nao pode excluir este item.' };
     }
     return { success: true };
 };
@@ -125,11 +134,7 @@ export const deleteItem = async (itemId) => {
 export const getMyReservations = async (userId) => {
     const { data, error } = await supabase
         .from('items')
-        .select(`
-            *,
-            donor:profiles!user_id(name, phone),
-            warehouse:warehouses(name, address)
-        `)
+        .select(`${PUBLIC_ITEM_COLUMNS},donor:profiles!user_id(name),warehouse:warehouses(name,address)`)
         .eq('requested_by', userId)
         .eq('status', 'reserved')
         .order('reserved_at', { ascending: false });
@@ -138,7 +143,17 @@ export const getMyReservations = async (userId) => {
         console.error('[getMyReservations] Erro:', error);
         return [];
     }
-    return data;
+    // A RPC confere auth.uid() e reserva ativa antes de retornar dados privados.
+    return await Promise.all((data || []).map(async (item) => {
+        const pickup = await getAuthorizedPickup(item.id);
+        if (!pickup) return item;
+        return {
+          ...item,
+          pickup_address: pickup.pickup_address,
+          pickup_instructions: pickup.pickup_instructions,
+          donor: { ...item.donor, phone: pickup.donor_phone }
+        };
+    }));
 };
 
 // ─── Minhas Doações (Doador) ──────────────────────────────────────────────
@@ -146,11 +161,7 @@ export const getMyReservations = async (userId) => {
 export const getMyDonations = async (userId) => {
     const { data, error } = await supabase
         .from('items')
-        .select(`
-            *,
-            requester:profiles!requested_by(name, phone),
-            warehouse:warehouses(name, address)
-        `)
+        .select(`${PUBLIC_ITEM_COLUMNS},requester:profiles!requested_by(name),warehouse:warehouses(name,address)`)
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
 
@@ -165,57 +176,24 @@ export const getMyDonations = async (userId) => {
 // ─── Reserva atômica / Liberação ──────────────────────────────────────────
 
 export const releaseItem = async (itemId, requestId = null) => {
-    // 1. Volta o item para disponível
-    const { error: itemErr } = await supabase
-        .from('items')
-        .update({
-            status: 'available',
-            requested_by: null,
-            reserved_at: null
-        })
-        .eq('id', itemId);
-
-    if (itemErr) return { success: false, message: itemErr.message };
-
-    // 2. Se houver um pedido associado, reabre o pedido
-    if (requestId) {
-        await supabase
-            .from('item_requests')
-            .update({ status: 'open' })
-            .eq('id', requestId);
+    const { data, error } = await supabase.rpc('release_donation', { p_item_id: itemId });
+    if (error || data !== true) {
+        return { success: false, message: error?.message || 'A reserva nao pode ser liberada por esta conta.' };
     }
-
+    if (requestId) {
+      const { error: requestError } = await supabase.from('item_requests')
+        .update({ status: 'open' }).eq('id', requestId);
+      if (requestError) console.error('[releaseItem] Nao foi possivel reabrir pedido:', requestError);
+    }
     return { success: true, message: 'Item liberado com sucesso.' };
 };
 
-export const requestItemWithLock = async (itemId, userId) => {
-    const { data: current, error: fetchErr } = await supabase
-        .from('items')
-        .select('id, status')
-        .eq('id', itemId)
-        .single();
-
-    if (fetchErr) return { success: false, message: 'Erro ao verificar o item.' };
-    if (!current || current.status !== 'available') {
-        return { success: false, message: 'Este item não está mais disponível.' };
+export const requestItemWithLock = async (itemId) => {
+    const { data, error } = await supabase.rpc('reserve_donation', { p_item_id: itemId });
+    if (error || data !== true) {
+        return { success: false, message: error?.message || 'O item nao esta disponivel para reserva.' };
     }
-
-    const { data, error } = await supabase
-        .from('items')
-        .update({
-            status: 'reserved',
-            requested_by: userId,
-            reserved_at: new Date().toISOString(),
-        })
-        .eq('id', itemId)
-        .eq('status', 'available')
-        .select();
-
-    if (error) return { success: false, message: `Erro ao reservar: ${error.message}` };
-    if (!data || data.length === 0) {
-        return { success: false, message: 'Item foi reservado por outra pessoa agora mesmo.' };
-    }
-    return { success: true, message: 'Item reservado com sucesso!', data: data[0] };
+    return { success: true, message: 'Item reservado com sucesso!' };
 };
 
 // ─── Item Requests (Pedidos) ────────────────────────────────────────────────
@@ -226,7 +204,7 @@ export const getItemRequests = async (category = 'TODOS') => {
             .from('item_requests')
             .select(`
                 *,
-                requester:profiles!user_id(name, phone)
+                requester:profiles!user_id(name)
             `)
             .eq('status', 'open')
             .order('created_at', { ascending: false });
