@@ -19,6 +19,7 @@ describe("Public Routes", () => {
     expect(getAuthRedirect(false, false, "privacy")).toBeNull();
     expect(getAuthRedirect(false, false, "delete-account")).toBeNull();
     expect(getAuthRedirect(false, false, "legal")).toBeNull();
+    expect(getAuthRedirect(false, false, "help")).toBeNull();
   });
 
   it("redirects unauthenticated users from protected routes", () => {
