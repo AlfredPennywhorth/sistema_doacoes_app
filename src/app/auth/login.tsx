@@ -43,7 +43,14 @@ export default function LoginScreen() {
                             <MaterialIcons name="arrow-back-ios" size={20} color="#0f172a" />
                         </TouchableOpacity>
                         <Text style={styles.appBarTitle}>Login</Text>
-                        <View style={{ width: 48 }} /> {/* Placeholder to center title */}
+                        <TouchableOpacity
+                            onPress={() => router.push('/help')}
+                            style={styles.helpBtn}
+                            accessibilityRole="button"
+                            accessibilityLabel="Abrir ajuda"
+                        >
+                            <MaterialIcons name="help-outline" size={22} color="#143db8" />
+                        </TouchableOpacity>
                     </View>
 
                     <View style={styles.headerArea}>
@@ -160,6 +167,12 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: 'bold',
         color: '#0f172a',
+    },
+    helpBtn: {
+        width: 48,
+        height: 48,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     headerArea: {
         alignItems: 'center',
