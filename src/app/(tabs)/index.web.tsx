@@ -51,7 +51,7 @@ function loadLeaflet() {
       css.id = 'leaflet-css';
       css.rel = 'stylesheet';
       css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      css.integrity = 'sha256-p4NxAoJBhIINfQ3yn3u7tAp7T9Hn8E3GZr1B4w2x0mE=';
+      css.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
       css.crossOrigin = '';
       document.head.appendChild(css);
     }
@@ -119,9 +119,12 @@ export default function MapScreenWeb() {
   const donationsWithPublicLocation = useMemo(
     () =>
       filteredDonations.filter((item) => {
+        if (item.public_latitude == null || item.public_longitude == null ||
+            item.public_latitude === '' || item.public_longitude === '') return false;
         const lat = Number(item.public_latitude);
         const lng = Number(item.public_longitude);
-        return Number.isFinite(lat) && Number.isFinite(lng);
+        return Number.isFinite(lat) && Number.isFinite(lng) &&
+          lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
       }),
     [filteredDonations]
   );

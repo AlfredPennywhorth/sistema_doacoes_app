@@ -49,7 +49,7 @@ function RootLayoutNav() {
   const router = useRouter();
   const [appIsReady, setAppIsReady] = useState(false);
   const allowGuestTestAccess =
-    process.env.EXPO_PUBLIC_ALLOW_GUEST_TEST_ACCESS === "true";
+    __DEV__ && process.env.EXPO_PUBLIC_ALLOW_GUEST_TEST_ACCESS === "true";
 
   useEffect(() => {
     const redirectTo = getAuthRedirect(
