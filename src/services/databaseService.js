@@ -94,7 +94,10 @@ export const createDonation = async (itemData) => {
         p_reference_point: itemData.reference_point,
         p_latitude: itemData.latitude,
         p_longitude: itemData.longitude,
-        p_instructions: itemData.pickup_instructions
+        p_instructions: itemData.pickup_instructions,
+        p_ttl_days: itemData.ttl_days ?? 7,
+        p_is_urgent: Boolean(itemData.is_urgent),
+        p_request_id: itemData.request_id ?? null
     });
 
     if (error) { console.error('Erro ao criar doação via RPC', error); return { error: error.message }; }
