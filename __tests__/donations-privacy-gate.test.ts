@@ -34,6 +34,24 @@ describe('Gate de privacidade: doacoes, retiradas e contatos', () => {
     expect(pendingSql).not.toMatch(/TRUNCATE\s+/i);
   });
 
+  it('preserva validade, urgencia e vinculo transacional com pedido', () => {
+    const page = fs.readFileSync(
+      path.join(process.cwd(), 'src/app/donate/new.tsx'), 'utf8'
+    );
+    expect(source).toContain('p_ttl_days: itemData.ttl_days');
+    expect(source).toContain('p_is_urgent: Boolean(itemData.is_urgent)');
+    expect(source).toContain('p_request_id: itemData.request_id');
+    expect(page).toContain('request_id: selectedRequest?.id ?? null');
+    expect(page).not.toContain('await fulfillItemRequest(selectedRequest.id)');
+
+    expect(pendingSql).toMatch(/p_ttl_days integer DEFAULT 7/i);
+    expect(pendingSql).toMatch(/p_is_urgent boolean DEFAULT false/i);
+    expect(pendingSql).toMatch(/p_request_id uuid DEFAULT NULL/i);
+    expect(pendingSql).toMatch(/FROM public\.item_requests AS r[\s\S]*?FOR UPDATE/i);
+    expect(pendingSql).toMatch(/UPDATE public\.item_requests SET status = 'fulfilled'/i);
+    expect(pendingSql).toMatch(/v_precision, p_ttl_days, now\(\) \+ \(p_ttl_days \* interval '1 day'\)/i);
+  });
+
   it('usa RPCs para reservar, liberar, concluir e excluir doacoes', () => {
     for (const fn of ['reserve_donation', 'release_donation', 'complete_donation', 'delete_donation']) {
       expect(source).toContain(`supabase.rpc('${fn}'`);
