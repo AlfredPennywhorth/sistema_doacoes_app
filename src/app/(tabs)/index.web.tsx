@@ -8,8 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 declare global {
   interface Window {
-    L?: any;
-    __leafletLoadingPromise?: Promise<any>;
+    maplibregl?: any;
+    __mapLibreLoadingPromise?: Promise<any>;
   }
 }
 
@@ -37,43 +37,43 @@ function categoryIcon(cat: string) {
   return 'volunteer-activism';
 }
 
-function loadLeaflet() {
+// Vetores OpenFreeMap: sem chave e sem acesso direto aos tiles comunitarios do OSM.
+const MAPLIBRE_VERSION = '5.24.0';
+const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
+
+function loadMapLibre(): Promise<any> {
   if (typeof window === 'undefined') {
-    return Promise.reject(new Error('Leaflet só pode ser carregado no navegador.'));
+    return Promise.reject(new Error('Mapa web disponivel apenas no navegador.'));
   }
 
-  if (window.L) return Promise.resolve(window.L);
-  if (window.__leafletLoadingPromise) return window.__leafletLoadingPromise;
+  if (window.maplibregl) return Promise.resolve(window.maplibregl);
+  if (window.__mapLibreLoadingPromise) return window.__mapLibreLoadingPromise;
 
-  window.__leafletLoadingPromise = new Promise((resolve, reject) => {
-    if (!document.getElementById('leaflet-css')) {
+  window.__mapLibreLoadingPromise = new Promise((resolve, reject) => {
+    if (!document.getElementById('maplibre-css')) {
       const css = document.createElement('link');
-      css.id = 'leaflet-css';
+      css.id = 'maplibre-css';
       css.rel = 'stylesheet';
-      css.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-      css.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
-      css.crossOrigin = '';
+      css.href = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;
       document.head.appendChild(css);
     }
 
-    const existing = document.getElementById('leaflet-js') as HTMLScriptElement | null;
-    if (existing) {
-      existing.addEventListener('load', () => resolve(window.L));
-      existing.addEventListener('error', () => reject(new Error('Falha ao carregar o mapa.')));
-      return;
-    }
-
     const script = document.createElement('script');
-    script.id = 'leaflet-js';
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
-    script.crossOrigin = '';
-    script.onload = () => resolve(window.L);
-    script.onerror = () => reject(new Error('Falha ao carregar o mapa.'));
+    script.id = 'maplibre-js';
+    script.src = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`;
+    script.onload = () => {
+      if (window.maplibregl) resolve(window.maplibregl);
+      else reject(new Error('MapLibre nao inicializou.'));
+    };
+    script.onerror = () => reject(new Error('Falha ao carregar os recursos do mapa.'));
     document.body.appendChild(script);
+  }).catch((error) => {
+    window.__mapLibreLoadingPromise = undefined;
+    document.getElementById('maplibre-js')?.remove();
+    throw error;
   });
 
-  return window.__leafletLoadingPromise;
+  return window.__mapLibreLoadingPromise;
 }
 
 export default function MapScreenWeb() {
@@ -85,7 +85,7 @@ export default function MapScreenWeb() {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const mapRef = useRef<any>(null);
-  const markersRef = useRef<any>(null);
+  const markersRef = useRef<any[]>([]);
 
   const loadData = React.useCallback(async () => {
     try {
@@ -132,82 +132,101 @@ export default function MapScreenWeb() {
   useEffect(() => {
     let active = true;
 
-    loadLeaflet()
-      .then((L) => {
-        if (!active || !L || mapRef.current) return;
+    loadMapLibre()
+      .then((MapLibre) => {
+        if (!active || !MapLibre || mapRef.current) return;
 
         const element = document.getElementById('donations-map');
         if (!element) return;
 
-        const map = L.map(element, {
-          zoomControl: true,
+        if (!MapLibre.supported()) {
+          setMapError('O navegador nao suporta o mapa interativo. A lista de doacoes continua disponivel.');
+          return;
+        }
+
+        const map = new MapLibre.Map({
+          container: element,
+          style: MAP_STYLE,
+          center: [-46.6333, -23.5505],
+          zoom: 10,
           attributionControl: true,
-        }).setView([-23.5505, -46.6333], 10);
+        });
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          attribution: '&copy; OpenStreetMap contributors',
-          maxZoom: 19,
-        }).addTo(map);
-
+        map.addControl(new MapLibre.NavigationControl(), 'top-left');
         mapRef.current = map;
-        markersRef.current = L.layerGroup().addTo(map);
-        setMapReady(true);
 
-        window.setTimeout(() => map.invalidateSize(), 0);
+        map.once('load', () => {
+          if (active) {
+            setMapReady(true);
+            map.resize();
+          }
+        });
+        map.on('error', (event: any) => {
+          console.error('[MapScreenWeb] Erro ao carregar mapa:', event.error);
+          if (active) {
+            setMapError('O mapa-base nao esta disponivel. A lista de doacoes continua acessivel.');
+          }
+        });
       })
       .catch((error) => {
-        console.error('[MapScreenWeb] Erro ao inicializar Leaflet:', error);
-        if (active) setMapError('Não foi possível carregar o mapa agora. A lista de doações continua disponível.');
+        console.error('[MapScreenWeb] Erro ao inicializar mapa:', error);
+        if (active) setMapError('Nao foi possivel carregar o mapa. A lista de doacoes continua disponivel.');
       });
 
     return () => {
       active = false;
+      markersRef.current.forEach((marker) => marker.remove());
+      markersRef.current = [];
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
-        markersRef.current = null;
       }
     };
   }, []);
 
   useEffect(() => {
-    if (!mapReady || !window.L || !mapRef.current || !markersRef.current) return;
+    if (!mapReady || !window.maplibregl || !mapRef.current) return;
 
-    const L = window.L;
-    const markers = markersRef.current;
-    markers.clearLayers();
+    const MapLibre = window.maplibregl;
+    const map = mapRef.current;
+    markersRef.current.forEach((marker) => marker.remove());
+    markersRef.current = [];
 
     const coordinates: [number, number][] = [];
 
     donationsWithPublicLocation.forEach((item) => {
       const lat = Number(item.public_latitude);
       const lng = Number(item.public_longitude);
-      coordinates.push([lat, lng]);
+      coordinates.push([lng, lat]);
 
-      const marker = L.circleMarker([lat, lng], {
-        radius: 8,
-        color: categoryColor(item.category),
-        fillColor: categoryColor(item.category),
-        fillOpacity: 0.75,
-        weight: 2,
-      });
+      const marker = new MapLibre.Marker({ color: categoryColor(item.category) })
+        .setLngLat([lng, lat])
+        .addTo(map);
 
-      marker.bindTooltip(item.title || 'Doação disponível', {
-        direction: 'top',
-        opacity: 0.95,
-      });
-
-      marker.on('click', () => {
+      const element = marker.getElement();
+      element.title = item.title || 'Ver doacao';
+      element.setAttribute('role', 'button');
+      element.setAttribute('tabindex', '0');
+      const navigateToItem = () => {
         router.push({ pathname: '/donate/[id]', params: { id: item.id } });
+      };
+      element.addEventListener('click', navigateToItem);
+      element.addEventListener('keydown', (event: KeyboardEvent) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          navigateToItem();
+        }
       });
 
-      marker.addTo(markers);
+      markersRef.current.push(marker);
     });
 
     if (coordinates.length === 1) {
-      mapRef.current.setView(coordinates[0], 13);
+      map.flyTo({ center: coordinates[0], zoom: 13 });
     } else if (coordinates.length > 1) {
-      mapRef.current.fitBounds(L.latLngBounds(coordinates).pad(0.15), { maxZoom: 14 });
+      const bounds = new MapLibre.LngLatBounds(coordinates[0], coordinates[0]);
+      coordinates.slice(1).forEach((point) => bounds.extend(point));
+      map.fitBounds(bounds, { padding: 40, maxZoom: 14 });
     }
   }, [donationsWithPublicLocation, mapReady, router]);
 
