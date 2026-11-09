@@ -9,6 +9,35 @@ const PUBLIC_ITEM_COLUMNS = [
   'city', 'state', 'public_latitude', 'public_longitude', 'location_precision'
 ].join(',');
 
+// Somente status de autorização, nunca retorna endereço ou telefone.
+export const getDonationPickupReleaseStatus = async (itemId) => {
+  const { data, error } = await supabase.rpc('get_donation_pickup_release_status', {
+    p_item_id: itemId
+  });
+  if (error) {
+    console.error('[getDonationPickupReleaseStatus] Falha:', error.code || 'unknown');
+    return false;
+  }
+  return Array.isArray(data) && data[0]?.address_released === true;
+};
+
+// A confirmação será validada pelo Supabase contra o doador e a reserva atual.
+export const confirmDonationPickupRelease = async (
+  itemId,
+  isThirdPartyAddress,
+  ownerPermissionConfirmed
+) => {
+  const { data, error } = await supabase.rpc('confirm_donation_pickup_release', {
+    p_item_id: itemId,
+    p_is_third_party_address: isThirdPartyAddress,
+    p_owner_permission_confirmed: ownerPermissionConfirmed
+  });
+  if (error || data !== true) {
+    return { success: false, message: 'Não foi possível autorizar a liberação do endereço.' };
+  }
+  return { success: true };
+};
+
 const getAuthorizedPickup = async (itemId) => {
   const { data, error } = await supabase.rpc('get_donation_pickup', { p_item_id: itemId });
   if (error) {
@@ -61,9 +90,11 @@ export const getDonationById = async (id) => {
     if (!data || data.length === 0) return null;
 
     const item = data[0];
+    item.address_released = false;
     // O servidor libera telefone e endereco somente para doador ou reservante.
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
+      item.address_released = await getDonationPickupReleaseStatus(item.id);
       const pickup = await getAuthorizedPickup(item.id);
       if (pickup) {
         item.pickup_address = pickup.pickup_address;
