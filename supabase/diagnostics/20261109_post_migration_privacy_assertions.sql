@@ -15,6 +15,10 @@ BEGIN
       OR has_column_privilege(r,'public.profiles','phone','SELECT')
       OR has_table_privilege(r,'public.items','UPDATE')
       OR has_table_privilege(r,'public.items','DELETE')
+      OR has_column_privilege(r,'public.items','status','UPDATE')
+      OR has_column_privilege(r,'public.items','requested_by','UPDATE')
+      OR has_column_privilege(r,'public.items','user_id','UPDATE')
+      OR has_column_privilege(r,'public.profiles','is_admin','UPDATE')
     THEN
       RAISE EXCEPTION 'FALHA: acesso privado ou escrita direta inesperados para %',r;
     END IF;
