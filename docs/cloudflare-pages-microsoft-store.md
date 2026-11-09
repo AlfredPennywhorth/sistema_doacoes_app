@@ -70,3 +70,12 @@ Ao empacotar no PWABuilder, associar a URL HTTPS homologada à identidade reserv
 - Cloudflare build configuration: https://developers.cloudflare.com/pages/configuration/build-configuration/
 - Expo web exports: https://docs.expo.dev/guides/publishing-websites/
 - PWABuilder identity: https://github.com/pwa-builder/pwabuilder-windows-chromium-docs/blob/master/find-publisher.md
+
+## Registro de preparação do Preview — 09/11/2026
+
+- Cloudflare Pages: projeto `sistema-doacoes-app` criado; build `npm run build:pages`, saída `dist`, raiz vazia.
+- Produção `master` com implantação automática desligada; previews automáticos restritos à branch `chore/cloudflare-pages-pwa-prep-20261108` (confirmado visualmente pelo responsável).
+- Quatro variáveis `EXPO_PUBLIC_*` cadastradas no Pages segundo confirmação do responsável; valores não inspecionados por este registro.
+- Falha inicial de produção em `master` (`3bec457`, `npm ERESOLVE` React 19.1.0 / React Native 0.86.0); não repetir este deploy.
+- Este commit solicita apenas o build de preview da branch de homologação. A URL resultante, caso o build tenha sucesso, **pode ser pública**. Não autoriza divulgação, promoção à `master` ou submissão à Microsoft Store.
+- Após a execução, conferir logs completos, variáveis efetivas, funcionamento do login e dados pessoais antes de iniciar os testes de usuários.
