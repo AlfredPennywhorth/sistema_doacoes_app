@@ -43,8 +43,11 @@ export const getDonations = async (category = null, warehouseId = null, includeR
     }
 
     const { data, error } = await query;
-    if (error) { console.error('Erro ao buscar doações', error); return []; }
-    return data;
+    if (error) {
+        console.error('[getDonations] Falha ao consultar itens:', error.code || error.message);
+        throw new Error('DONATIONS_FETCH_FAILED');
+    }
+    return data || [];
 };
 
 export const getDonationById = async (id) => {
