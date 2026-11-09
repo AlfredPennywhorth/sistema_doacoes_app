@@ -97,6 +97,7 @@ function loadMapLibre(): Promise<any> {
       css.href = `${MAPLIBRE_CDNS[0]}maplibre-gl.css`;
       css.onerror = () => {
         console.warn('[MapScreenWeb] CSS do MapLibre indisponível no CDN primário.');
+        css.onerror = null;
         css.href = `${MAPLIBRE_CDNS[1]}maplibre-gl.css`;
       };
       document.head.appendChild(css);
@@ -169,6 +170,7 @@ export default function MapScreenWeb() {
 
   useEffect(() => {
     let active = true;
+    let mapLoadTimeout: ReturnType<typeof setTimeout> | undefined;
     setMapReady(false);
     setMapError(null);
 
@@ -195,8 +197,13 @@ export default function MapScreenWeb() {
         map.addControl(new MapLibre.NavigationControl(), 'top-left');
         mapRef.current = map;
 
+        mapLoadTimeout = setTimeout(() => {
+          if (active) setMapError('O mapa demorou para carregar. Tente novamente ou consulte a lista de doações.');
+        }, 20000);
         map.once('load', () => {
+          if (mapLoadTimeout) clearTimeout(mapLoadTimeout);
           if (active) {
+            setMapError(null);
             setMapReady(true);
             map.resize();
           }
@@ -214,6 +221,7 @@ export default function MapScreenWeb() {
 
     return () => {
       active = false;
+      if (mapLoadTimeout) clearTimeout(mapLoadTimeout);
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current = [];
       if (mapRef.current) {
