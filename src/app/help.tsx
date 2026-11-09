@@ -178,8 +178,11 @@ export default function HelpScreen() {
             apenas quando realmente necessário.
           </Step>
           <Tip>
-            Em retirada residencial, o endereço exato fica protegido. O mapa usa
-            somente coordenadas públicas aproximadas.
+            Em retirada residencial, o mapa mostra apenas a região aproximada.
+            O endereço completo só poderá ser disponibilizado ao reservante
+            depois da confirmação da reserva e da autorização expressa do doador
+            para liberar essa informação. Se a retirada ocorrer em imóvel de
+            terceiros, confirme previamente a autorização do proprietário.
           </Tip>
         </HelpSection>
 
@@ -195,15 +198,43 @@ export default function HelpScreen() {
             Se o item estiver disponível, toque em Reservar Agora.
           </Step>
           <Step number={3} title="Combine a retirada">
-            Depois da reserva, os dados necessários para a retirada ficam
-            disponíveis para você. Quando houver telefone cadastrado, use o
-            WhatsApp para combinar data e horário.
+            Depois da confirmação da reserva e da autorização do doador para
+            liberar o endereço, você poderá consultar os dados de retirada.
+            Combine data e horário antes de se deslocar.
           </Step>
           <Step number={4} title="Se desistir">
             Use a opção Desistir da Reserva para liberar o item para outra pessoa.
           </Step>
           <Tip>
             Não se desloque antes de confirmar a retirada com o doador.
+          </Tip>
+        </HelpSection>
+
+        <HelpSection
+          icon="verified-user"
+          title="Autorização para divulgar endereço"
+          summary="Orientações ao doador e proteção de imóveis de terceiros"
+        >
+          <Step number={1} title="Informe a região, sem expor a residência">
+            Para ofertas em endereço residencial, o mapa exibe somente uma
+            localização pública aproximada. Evite incluir número, complemento,
+            telefone ou instruções de acesso na descrição pública.
+          </Step>
+          <Step number={2} title="Confirme a reserva e a liberação">
+            O endereço completo deve ser liberado somente após a confirmação
+            efetiva da reserva e a confirmação expressa do doador de que
+            autoriza compartilhar os dados de retirada com o reservante.
+          </Step>
+          <Step number={3} title="Se o imóvel for de terceiros">
+            Antes de autorizar a divulgação, obtenha a autorização do
+            proprietário ou responsável pelo imóvel para compartilhar o
+            endereço e as orientações de acesso. Sem essa autorização,
+            não libere os dados e escolha outro local de entrega.
+          </Step>
+          <Tip>
+            A autorização de liberação não significa autorização para tornar
+            o endereço público. Os dados devem ser acessíveis apenas ao
+            destinatário autorizado e pelo tempo necessário à retirada.
           </Tip>
         </HelpSection>
 
@@ -260,7 +291,10 @@ export default function HelpScreen() {
           <View style={styles.bulletRow}>
             <MaterialIcons name="check" size={18} color="#047857" />
             <Text style={styles.bodyText}>
-              O endereço exato de retirada é restrito aos envolvidos no fluxo.
+              O endereço residencial completo só pode ser liberado ao
+              reservante após a reserva confirmada e a autorização expressa
+              do doador. Para imóvel de terceiros, exige-se também a
+              autorização prévia do proprietário ou responsável.
             </Text>
           </View>
           <View style={styles.bulletRow}>
