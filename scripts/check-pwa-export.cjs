@@ -30,6 +30,22 @@ for (const filename of ['manifest.json', 'service-worker.js', 'icon.png']) {
   }
 }
 
+// Nao permitir deploy "verde" com fonte TTF ausente ou HTML servido como fonte.
+const iconsFont = path.join(
+  dist, 'assets', 'node_modules', '@expo', 'vector-icons',
+  'build', 'vendor', 'react-native-vector-icons', 'Fonts', 'MaterialIcons.ttf'
+);
+if (!fs.existsSync(iconsFont)) {
+  errors.push('MaterialIcons.ttf nao publicado em dist/assets/node_modules');
+} else {
+  const fontHeader = fs.readFileSync(iconsFont).subarray(0, 4);
+  const valid = fontHeader.length === 4 && (
+    fontHeader.readUInt32BE(0) === 0x00010000 ||
+    ['OTTO', 'true', 'typ1'].includes(fontHeader.toString('latin1'))
+  );
+  if (!valid) errors.push('MaterialIcons.ttf invalido (HTML ou outro conteudo)');
+}
+
 const manifestFile = path.join(dist, 'manifest.json');
 if (fs.existsSync(manifestFile)) {
   try {

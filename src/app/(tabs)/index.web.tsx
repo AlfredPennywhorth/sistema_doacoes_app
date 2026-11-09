@@ -184,18 +184,28 @@ export default function MapScreenWeb() {
         const element = document.getElementById('donations-map');
         if (!element) return;
 
-        if (!MapLibre.supported()) {
-          setMapError('O navegador nao suporta o mapa interativo. A lista de doacoes continua disponivel.');
+        // MapLibre GL JS v5.24 distribuído em UMD não garante a API
+        // estática supported(). O erro "supported is not a function"
+        // interrompia o mapa antes da criação do objeto.
+        if (typeof MapLibre.Map !== 'function') {
+          setMapError('Biblioteca do mapa inválida. Tente novamente.');
           return;
         }
 
-        const map = new MapLibre.Map({
+        let map: any;
+        try {
+          map = new MapLibre.Map({
           container: element,
           style: MAP_STYLE,
           center: [-46.6333, -23.5505],
           zoom: 10,
           attributionControl: true,
-        });
+          });
+        } catch (error) {
+          console.error('[MapScreenWeb] Erro na criação do mapa:', error);
+          setMapError('O navegador não conseguiu inicializar o mapa interativo.');
+          return;
+        }
 
         map.addControl(new MapLibre.NavigationControl(), 'top-left');
         mapRef.current = map;
