@@ -355,6 +355,29 @@ $$;
 REVOKE ALL ON FUNCTION public.delete_donation(uuid) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.delete_donation(uuid) TO authenticated;
 
+-- Limpar GRANTs de coluna herdados: REVOKE de tabela NAO remove grants
+-- concedidos explicitamente sobre colunas (inclusive UPDATE de status).
+-- Evita manter privilégios mesmo com RLS permissivo legado.
+DO $
+DECLARE
+  v_table text;
+  v_columns text;
+BEGIN
+  FOREACH v_table IN ARRAY ARRAY['items','profiles'] LOOP
+    SELECT string_agg(format('%I',c.column_name), ',')
+      INTO v_columns
+    FROM information_schema.columns c
+    WHERE c.table_schema='public' AND c.table_name=v_table;
+    IF v_columns IS NULL THEN
+      RAISE EXCEPTION 'Tabela sem colunas: %', v_table;
+    END IF;
+    EXECUTE format(
+      'REVOKE SELECT (%1$s), INSERT (%1$s), UPDATE (%1$s), REFERENCES (%1$s) ON TABLE public.%2$I FROM PUBLIC, anon, authenticated',
+      v_columns, v_table
+    );
+  END LOOP;
+END $;
+
 -- 6. GRANTS: primeiro revogar permissao de tabela e coluna, depois reabrir
 -- apenas campos publicos. O RLS segue restringindo linhas.
 REVOKE ALL ON TABLE public.items FROM PUBLIC, anon, authenticated;
