@@ -211,7 +211,7 @@ export default function RequestsScreen() {
                 <View style={{ flex: 1 }}>
                     <Text style={styles.locationTitle}>ENDEREÇO DE RETIRADA:</Text>
                     <Text style={styles.locationText}>
-                        {item.pickup_address || (item.warehouse ? item.warehouse.address : 'A combinar com doador')}
+                        {item.pickup_address || (item.warehouse ? item.warehouse.address : 'Aguardando autorização do doador')}
                     </Text>
                 </View>
             </View>
@@ -231,7 +231,8 @@ export default function RequestsScreen() {
                     <Text style={styles.declineText}>Recusar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                    style={styles.acceptBtn}
+                    style={[styles.acceptBtn, !item.donor?.phone && !item.warehouse && { opacity: 0.5 }]}
+                    disabled={!item.donor?.phone}
                     onPress={() => handleConfirmWhatsApp(item)}
                 >
                     <MaterialIcons name="chat" size={16} color="#fff" />

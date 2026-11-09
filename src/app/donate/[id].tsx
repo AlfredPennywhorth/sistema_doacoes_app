@@ -1,5 +1,5 @@
 import { useAuth } from '@/hooks/useAuth';
-import { confirmItemCollection, deleteItem, getDonationById, getProfile, releaseItem, requestItemWithLock } from '@/services/databaseService';
+import { confirmDonationPickupRelease, confirmItemCollection, deleteItem, getDonationById, getProfile, releaseItem, requestItemWithLock } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
@@ -26,6 +26,9 @@ export default function DonationDetailScreen() {
     const [loading, setLoading] = useState(true);
     const [reserving, setReserving] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
+    const [releaseConsent, setReleaseConsent] = useState(false);
+    const [thirdPartyAddress, setThirdPartyAddress] = useState(false);
+    const [ownerPermission, setOwnerPermission] = useState(false);
     const [feedback, setFeedback] = useState<{ type: FeedbackType; message: string } | null>(null);
 
     const loadItem = React.useCallback(async () => {
@@ -64,10 +67,28 @@ export default function DonationDetailScreen() {
         setReserving(false);
 
         if (result.success) {
-            showFeedback('success', '✅ Item reservado! Entre em contato com o doador.');
+            showFeedback('success', 'Reserva confirmada. Aguarde o doador autorizar o endereço de retirada.');
             loadItem();
         } else {
             showFeedback('error', result.message || 'Não foi possível reservar o item.');
+        }
+    };
+
+    const handleApproveAddress = async () => {
+        if (!releaseConsent || (thirdPartyAddress && !ownerPermission)) {
+            showFeedback('error', 'Confirme a autorização para compartilhar o endereço.');
+            return;
+        }
+        setReserving(true);
+        const result = await confirmDonationPickupRelease(id, thirdPartyAddress, ownerPermission);
+        setReserving(false);
+        if (result.success) {
+            showFeedback('success', 'Endereço liberado ao reservante confirmado.');
+            setReleaseConsent(false);
+            setOwnerPermission(false);
+            await loadItem();
+        } else {
+            showFeedback('error', result.message || 'Falha ao liberar endereço.');
         }
     };
 
@@ -314,6 +335,70 @@ export default function DonationDetailScreen() {
                             </Text>
                         ) : null}
 
+                        {/* Liberação expressa: exige reserva confirmada e consentimento. */}
+                        {item.user_id === user?.id && item.status === 'reserved' && !item.address_released && (
+                            <View style={styles.pickupSection}>
+                                <Text style={styles.sectionTitle}>Autorizar liberação do endereço</Text>
+                                <Text style={styles.contactHint}>
+                                    A reserva já está confirmada. O endereço residencial completo
+                                    permanece oculto ao reservante até sua autorização expressa.
+                                </Text>
+                                <TouchableOpacity
+                                    accessibilityRole="checkbox"
+                                    accessibilityState={{ checked: thirdPartyAddress }}
+                                    onPress={() => {
+                                        setThirdPartyAddress(!thirdPartyAddress);
+                                        setOwnerPermission(false);
+                                    }}
+                                    style={styles.consentOption}
+                                >
+                                    <MaterialIcons name={thirdPartyAddress ? 'check-box' : 'check-box-outline-blank'} size={22} color="#003366" />
+                                    <Text style={styles.bodyConsent}>A retirada ocorrerá em imóvel de terceiros.</Text>
+                                </TouchableOpacity>
+                                {thirdPartyAddress && (
+                                    <TouchableOpacity
+                                        accessibilityRole="checkbox"
+                                        accessibilityState={{ checked: ownerPermission }}
+                                        onPress={() => setOwnerPermission(!ownerPermission)}
+                                        style={styles.consentOption}
+                                    >
+                                        <MaterialIcons name={ownerPermission ? 'check-box' : 'check-box-outline-blank'} size={22} color="#003366" />
+                                        <Text style={styles.bodyConsent}>
+                                            Confirmo que o proprietário ou responsável pelo imóvel
+                                            autorizou compartilhar os dados de retirada.
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+                                <TouchableOpacity
+                                    accessibilityRole="checkbox"
+                                    accessibilityState={{ checked: releaseConsent }}
+                                    onPress={() => setReleaseConsent(!releaseConsent)}
+                                    style={styles.consentOption}
+                                >
+                                    <MaterialIcons name={releaseConsent ? 'check-box' : 'check-box-outline-blank'} size={22} color="#003366" />
+                                    <Text style={styles.bodyConsent}>
+                                        Autorizo disponibilizar o endereço completo e as orientações
+                                        somente ao reservante confirmado.
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    accessibilityRole="button"
+                                    style={[styles.confirmCollectedBtn, (!releaseConsent || (thirdPartyAddress && !ownerPermission) || reserving) && { opacity: 0.5 }]}
+                                    onPress={handleApproveAddress}
+                                    disabled={!releaseConsent || (thirdPartyAddress && !ownerPermission) || reserving}
+                                >
+                                    <MaterialIcons name="verified-user" size={20} color="#059669" />
+                                    <Text style={styles.confirmCollectedText}>Confirmar liberação dos dados</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                        {item.user_id === user?.id && item.status === 'reserved' && item.address_released && (
+                            <Text style={styles.contactHint}>Endereço autorizado para o reservante atual.</Text>
+                        )}
+                        {isReservedByMe && item.status === 'reserved' && !item.address_released && (
+                            <Text style={styles.contactHint}>Aguardando o doador autorizar o compartilhamento do endereço.</Text>
+                        )}
+
                         {/* Botões de Ação para o Doador */}
                         {item.user_id === user?.id && item.status === 'reserved' && (
                             <View style={styles.donorActions}>
@@ -392,6 +477,8 @@ export default function DonationDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+    consentOption: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingVertical: 8 },
+    bodyConsent: { flex: 1, color: '#334155', fontSize: 13, lineHeight: 19 },
     safeArea: { flex: 1, backgroundColor: '#fff' },
     centered: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#fff', padding: 20 },
     notFound: { fontSize: 18, color: '#64748b', marginTop: 16, textAlign: 'center' },
