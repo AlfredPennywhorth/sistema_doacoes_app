@@ -2,7 +2,7 @@ name: PWA Beta — qualidade e exportação web
 
 on:
   pull_request:
-    branches: [feature/integracao-apis-publicas]
+    branches: [feature/integracao-apis-publicas, chore/cloudflare-pages-pwa-prep-20261108]
     paths:
       - "src/**"
       - "package.json"
@@ -10,7 +10,7 @@ on:
       - "scripts/**"
       - ".github/workflows/pwa-beta-check.yml"
   push:
-    branches: [integration/pwa-visual-beta-20261109]
+    branches: [integration/pwa-visual-beta-20261109, fix/pwa-beta-console-root-causes-20261109]
   workflow_dispatch:
 
 permissions:
