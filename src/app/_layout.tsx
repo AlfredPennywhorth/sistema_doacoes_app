@@ -5,6 +5,8 @@ import {
 } from "@react-navigation/native";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import { useFonts } from "expo-font";
+import { MaterialIcons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import "react-native-reanimated";
@@ -101,6 +103,11 @@ function RootLayoutNav() {
 }
 
 export default function RootLayout() {
+  // Precarrega a fonte da familia de icones antes de exibir a UI web/PWA.
+  // Sem isso, o browser pode renderizar quadrados em lugar dos glifos.
+  const [iconsLoaded, iconsError] = useFonts(MaterialIcons.font);
+  if (!iconsLoaded && !iconsError) return null;
+
   return (
     <AuthProvider>
       <UpdateHandler />
