@@ -39,6 +39,8 @@ jobs:
         run: npm run lint
       - name: Exportar PWA
         run: npx expo export --platform web
+      - name: Publicar fontes da interface
+        run: npm run publish:pwa-fonts
       - name: Verificar estrutura de PWA
         run: npm run verify:pwa
 
