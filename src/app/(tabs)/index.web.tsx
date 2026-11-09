@@ -42,35 +42,78 @@ function categoryIcon(cat: string) {
 const MAPLIBRE_VERSION = '5.24.0';
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 
+// Dois CDNs para o mesmo arquivo/versionamento. A falha em um provedor
+// não deve inutilizar a tela. A lista de doações continua disponível.
+const MAPLIBRE_CDNS = [
+  `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/`,
+  `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/`,
+];
+const SCRIPT_TIMEOUT_MS = 12000;
+
+function loadMapLibreFrom(src: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.maplibreLoader = 'true';
+    let finished = false;
+    const done = (error?: Error) => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timeout);
+      script.onload = null;
+      script.onerror = null;
+      if (error) {
+        script.remove();
+        reject(error);
+      } else {
+        resolve(window.maplibregl);
+      }
+    };
+    const timeout = window.setTimeout(
+      () => done(new Error('Tempo limite para baixar o MapLibre.')),
+      SCRIPT_TIMEOUT_MS
+    );
+    script.onload = () =>
+      done(window.maplibregl ? undefined : new Error('MapLibre não inicializou.'));
+    script.onerror = () => done(new Error('Falha ao baixar a biblioteca MapLibre.'));
+    document.body.appendChild(script);
+  });
+}
+
 function loadMapLibre(): Promise<any> {
   if (typeof window === 'undefined') {
-    return Promise.reject(new Error('Mapa web disponivel apenas no navegador.'));
+    return Promise.reject(new Error('Mapa web disponível apenas no navegador.'));
   }
-
   if (window.maplibregl) return Promise.resolve(window.maplibregl);
   if (window.__mapLibreLoadingPromise) return window.__mapLibreLoadingPromise;
 
-  window.__mapLibreLoadingPromise = new Promise((resolve, reject) => {
+  window.__mapLibreLoadingPromise = (async () => {
+    // O CSS é necessário para controles, marcadores e apresentação do mapa.
     if (!document.getElementById('maplibre-css')) {
       const css = document.createElement('link');
       css.id = 'maplibre-css';
       css.rel = 'stylesheet';
-      css.href = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;
+      css.href = `${MAPLIBRE_CDNS[0]}maplibre-gl.css`;
+      css.onerror = () => {
+        console.warn('[MapScreenWeb] CSS do MapLibre indisponível no CDN primário.');
+        css.href = `${MAPLIBRE_CDNS[1]}maplibre-gl.css`;
+      };
       document.head.appendChild(css);
     }
 
-    const script = document.createElement('script');
-    script.id = 'maplibre-js';
-    script.src = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`;
-    script.onload = () => {
-      if (window.maplibregl) resolve(window.maplibregl);
-      else reject(new Error('MapLibre nao inicializou.'));
-    };
-    script.onerror = () => reject(new Error('Falha ao carregar os recursos do mapa.'));
-    document.body.appendChild(script);
-  }).catch((error) => {
+    for (const base of MAPLIBRE_CDNS) {
+      try {
+        return await loadMapLibreFrom(`${base}maplibre-gl.js`);
+      } catch (error) {
+        console.warn('[MapScreenWeb] Falha no provedor de mapa:', base, error);
+      }
+    }
+    throw new Error('Não foi possível carregar o MapLibre nos provedores disponíveis.');
+  })().catch((error) => {
     window.__mapLibreLoadingPromise = undefined;
-    document.getElementById('maplibre-js')?.remove();
+    document.querySelectorAll('script[data-maplibre-loader="true"]')
+      .forEach((script) => script.remove());
     throw error;
   });
 
@@ -85,6 +128,7 @@ export default function MapScreenWeb() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [mapAttempt, setMapAttempt] = useState(0);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
@@ -125,6 +169,8 @@ export default function MapScreenWeb() {
 
   useEffect(() => {
     let active = true;
+    setMapReady(false);
+    setMapError(null);
 
     loadMapLibre()
       .then((MapLibre) => {
@@ -156,10 +202,9 @@ export default function MapScreenWeb() {
           }
         });
         map.on('error', (event: any) => {
-          console.error('[MapScreenWeb] Erro ao carregar mapa:', event.error);
-          if (active) {
-            setMapError('O mapa-base nao esta disponivel. A lista de doacoes continua acessivel.');
-          }
+          console.error('[MapScreenWeb] Falha de recurso do mapa:', event.error);
+          // Erros isolados de tile não devem esconder um mapa já funcional.
+          // Falhas na inicialização são diagnosticadas na homologação.
         });
       })
       .catch((error) => {
@@ -176,7 +221,7 @@ export default function MapScreenWeb() {
         mapRef.current = null;
       }
     };
-  }, []);
+  }, [mapAttempt]);
 
   useEffect(() => {
     if (!mapReady || !window.maplibregl || !mapRef.current) return;
@@ -276,6 +321,14 @@ export default function MapScreenWeb() {
           <View style={styles.mapMessage}>
             <MaterialIcons name="info-outline" size={18} color="#475569" />
             <Text style={styles.mapMessageText}>{mapError}</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Tentar carregar mapa novamente"
+              onPress={() => setMapAttempt((attempt) => attempt + 1)}
+              style={styles.retryMap}
+            >
+              <Text style={styles.retryMapText}>Tentar novamente</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -377,6 +430,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   mapMessageText: { flex: 1, color: '#475569', fontSize: 13 },
+  retryMap: { paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#e0f2fe', borderRadius: 8 },
+  retryMapText: { color: '#0369a1', fontSize: 12, fontWeight: '700' },
   list: { padding: 12, paddingBottom: 32, gap: 10 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', marginBottom: 2 },
   emptyText: { color: '#64748b', paddingVertical: 18 },
