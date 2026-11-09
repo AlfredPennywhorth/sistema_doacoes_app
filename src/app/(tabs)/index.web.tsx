@@ -85,10 +85,12 @@ export default function MapScreenWeb() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [donationsError, setDonationsError] = useState(false);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
   const loadData = React.useCallback(async () => {
+    setDonationsError(false);
     try {
       const data = await getDonations(null, null, true);
       setDonations(data || []);
@@ -98,7 +100,8 @@ export default function MapScreenWeb() {
         setIsAdmin(Boolean(profile?.is_admin));
       }
     } catch (error) {
-      console.error('[MapScreenWeb] Erro ao carregar dados:', error);
+      console.error('[MapScreenWeb] Erro ao carregar dados:', error instanceof Error ? error.message : 'unknown');
+      setDonationsError(true);
     }
   }, [user]);
 
@@ -291,7 +294,14 @@ export default function MapScreenWeb() {
 
       <ScrollView contentContainerStyle={styles.list}>
         <Text style={styles.sectionTitle}>Doações disponíveis</Text>
-        {filteredDonations.length === 0 ? (
+        {donationsError ? (
+          <View style={{ gap: 10 }}>
+            <Text style={styles.emptyText}>Não foi possível carregar as doações. Tente novamente.</Text>
+            <TouchableOpacity onPress={loadData} accessibilityRole="button">
+              <Text style={styles.title}>Tentar novamente</Text>
+            </TouchableOpacity>
+          </View>
+        ) : filteredDonations.length === 0 ? (
           <Text style={styles.emptyText}>Nenhuma doação encontrada.</Text>
         ) : (
           filteredDonations.map((item) => (
