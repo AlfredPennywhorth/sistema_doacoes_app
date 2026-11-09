@@ -9,6 +9,33 @@ const PUBLIC_ITEM_COLUMNS = [
   'city', 'state', 'public_latitude', 'public_longitude', 'location_precision'
 ].join(',');
 
+// Compatibilidade somente de LEITURA enquanto a migração de privacidade não
+// estiver instalada. Nunca consultar items.latitude/longitude/pickup_address/
+// pickup_instructions como fallback: esses campos podem identificar residências.
+// Remover depois de validada a migração pública + RPC de liberação expressa.
+const LEGACY_SAFE_ITEM_COLUMNS = [
+  'id', 'title', 'category', 'description', 'status', 'image_url',
+  'ttl_days', 'expires_at', 'user_id', 'requested_by', 'reserved_at',
+  'created_at', 'is_urgent', 'collected_at', 'warehouse_id'
+].join(',');
+
+const selectPublicItems = async (relations, configure) => {
+  const run = async (columns) => {
+    let query = supabase.from('items').select(`${columns}${relations}`);
+    return await configure(query);
+  };
+  const primary = await run(PUBLIC_ITEM_COLUMNS);
+  if (!primary.error) return primary;
+
+  // 42703: undefined_column no PostgreSQL, encontrado quando a API
+  // ainda não recebeu city/state/public_latitude/... . Nunca reduzir
+  // o SELECT em caso de erro de autorização, rede ou API genérico.
+  if (primary.error.code !== '42703') return primary;
+
+  console.warn('[items] Schema público ainda não migrado; consulta limitada a campos públicos legados.');
+  return await run(LEGACY_SAFE_ITEM_COLUMNS);
+};
+
 const getAuthorizedPickup = async (itemId) => {
   const { data, error } = await supabase.rpc('get_donation_pickup', { p_item_id: itemId });
   if (error) {
@@ -22,36 +49,30 @@ const getAuthorizedPickup = async (itemId) => {
 // ─── Itens / Doações ────────────────────────────────────────────────────────
 
 export const getDonations = async (category = null, warehouseId = null, includeReserved = false) => {
-    let query = supabase
-        .from('items')
-        .select(`${PUBLIC_ITEM_COLUMNS},donor:profiles!user_id(name),warehouse:warehouses(name,address)`);
-
-    if (includeReserved) {
-        query = query.in('status', ['available', 'reserved']);
-    } else {
-        query = query.eq('status', 'available');
+    const { data, error } = await selectPublicItems(
+      ',donor:profiles!user_id(name),warehouse:warehouses(name,address)',
+      (initialQuery) => {
+        let query = initialQuery;
+        query = includeReserved
+          ? query.in('status', ['available', 'reserved'])
+          : query.eq('status', 'available');
+        if (category && category !== 'TODOS') query = query.eq('category', category);
+        if (warehouseId) query = query.eq('warehouse_id', warehouseId);
+        return query.order('created_at', { ascending: false });
+      }
+    );
+    if (error) {
+        console.error('[getDonations] Falha ao consultar itens:', error.code || error.message);
+        throw new Error('DONATIONS_FETCH_FAILED');
     }
-
-    query = query.order('created_at', { ascending: false });
-
-    if (category && category !== 'TODOS') {
-        query = query.eq('category', category);
-    }
-
-    if (warehouseId) {
-        query = query.eq('warehouse_id', warehouseId);
-    }
-
-    const { data, error } = await query;
-    if (error) { console.error('Erro ao buscar doações', error); return []; }
-    return data;
+    return data || [];
 };
 
 export const getDonationById = async (id) => {
-    const { data, error } = await supabase
-        .from('items')
-        .select(`${PUBLIC_ITEM_COLUMNS},donor:profiles!user_id(name),warehouse:warehouses(name,address)`)
-        .eq('id', id);
+    const { data, error } = await selectPublicItems(
+        ',donor:profiles!user_id(name),warehouse:warehouses(name,address)',
+        (query) => query.eq('id', id)
+    );
 
     if (error) {
         console.error('[getDonationById] Erro na query:', error);
@@ -135,12 +156,12 @@ export const deleteItem = async (itemId) => {
 // ─── Minhas Reservas (Requerente) ──────────────────────────────────────────
 
 export const getMyReservations = async (userId) => {
-    const { data, error } = await supabase
-        .from('items')
-        .select(`${PUBLIC_ITEM_COLUMNS},donor:profiles!user_id(name),warehouse:warehouses(name,address)`)
-        .eq('requested_by', userId)
-        .eq('status', 'reserved')
-        .order('reserved_at', { ascending: false });
+    const { data, error } = await selectPublicItems(
+        ',donor:profiles!user_id(name),warehouse:warehouses(name,address)',
+        (query) => query.eq('requested_by', userId)
+            .eq('status', 'reserved')
+            .order('reserved_at', { ascending: false })
+    );
 
     if (error) {
         console.error('[getMyReservations] Erro:', error);
@@ -162,11 +183,11 @@ export const getMyReservations = async (userId) => {
 // ─── Minhas Doações (Doador) ──────────────────────────────────────────────
 
 export const getMyDonations = async (userId) => {
-    const { data, error } = await supabase
-        .from('items')
-        .select(`${PUBLIC_ITEM_COLUMNS},requester:profiles!requested_by(name),warehouse:warehouses(name,address)`)
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
+    const { data, error } = await selectPublicItems(
+        ',requester:profiles!requested_by(name),warehouse:warehouses(name,address)',
+        (query) => query.eq('user_id', userId)
+            .order('created_at', { ascending: false })
+    );
 
     if (error) {
         console.error('[getMyDonations] Erro:', error);
