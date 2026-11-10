@@ -1,6 +1,6 @@
 import { useAuth } from '@/hooks/useAuth';
 import { getPublicMapCoordinates } from '@/utils/publicMapCoordinates';
-import { getDonations, getProfile } from '@/services/databaseService';
+import { getDonations, getProfile, getWarehouses } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -137,8 +137,22 @@ export default function MapScreenWeb() {
   const loadData = React.useCallback(async () => {
     setDonationsError(false);
     try {
-      const data = await getDonations(null, null, true);
-      setDonations(data || []);
+      const [data, warehouses] = await Promise.all([
+        getDonations(null, null, true),
+        getWarehouses(),
+      ]);
+      // Coordenadas exatas só vêm do cadastro institucional do galpão ativo,
+      // cuja divulgação foi expressamente autorizada pelo responsável.
+      // Não consultar latitude/longitude privadas da tabela items.
+      const warehousesById = new Map(
+        (warehouses || []).map((warehouse: any) => [warehouse.id, warehouse])
+      );
+      setDonations((data || []).map((item: any) => ({
+        ...item,
+        warehouse: item.warehouse_id
+          ? (warehousesById.get(item.warehouse_id) || item.warehouse)
+          : item.warehouse,
+      })));
 
       if (user) {
         const profile = await getProfile(user.id);
@@ -167,7 +181,9 @@ export default function MapScreenWeb() {
 
   const donationsWithPublicLocation = useMemo(
     () =>
-      filteredDonations.filter((item) => getPublicMapCoordinates(item) !== null),
+      filteredDonations.filter(
+        (item) => item.status === 'available' && getPublicMapCoordinates(item) !== null
+      ),
     [filteredDonations]
   );
 
