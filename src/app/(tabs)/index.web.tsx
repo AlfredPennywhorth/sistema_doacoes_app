@@ -407,21 +407,30 @@ export default function MapScreenWeb() {
                 <MaterialIcons name="close" size={20} color="#475569" />
               </TouchableOpacity>
             </View>
-            {selectedGroup.items.map((item: any) => (
-              <TouchableOpacity
-                key={item.id}
-                accessibilityRole="button"
-                accessibilityLabel={`Ver doação: ${item.title || 'Sem título'}`}
-                style={styles.groupItem}
-                onPress={() => router.push({ pathname: '/donate/[id]', params: { id: item.id } })}
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.title}>{item.title || 'Doação'}</Text>
-                  <Text style={styles.meta}>{item.category}</Text>
-                </View>
-                <MaterialIcons name="chevron-right" size={20} color="#64748b" />
-              </TouchableOpacity>
-            ))}
+            <ScrollView
+              style={styles.groupScroll}
+              contentContainerStyle={styles.groupScrollContent}
+              nestedScrollEnabled
+              keyboardShouldPersistTaps="handled"
+              accessibilityLabel="Lista rolável de doações neste local"
+              showsVerticalScrollIndicator
+            >
+              {selectedGroup.items.map((item: any) => (
+                <TouchableOpacity
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Ver doação: ${item.title || 'Sem título'}`}
+                  style={styles.groupItem}
+                  onPress={() => router.push({ pathname: '/donate/[id]', params: { id: item.id } })}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.title}>{item.title || 'Doação'}</Text>
+                    <Text style={styles.meta}>{item.category}</Text>
+                  </View>
+                  <MaterialIcons name="chevron-right" size={20} color="#64748b" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
           </View>
         )}
 
@@ -534,6 +543,8 @@ const styles = StyleSheet.create({
   retryMapText: { color: '#0369a1', fontSize: 12, fontWeight: '700' },
   groupPanel: { paddingHorizontal: 14, paddingBottom: 12, backgroundColor: '#f8fafc', gap: 4 },
   groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  groupScroll: { maxHeight: 220, minHeight: 0 },
+  groupScrollContent: { paddingBottom: 8 },
   groupHeading: { color: '#0f172a', fontWeight: '700', fontSize: 14 },
   groupClose: { padding: 8 },
   groupItem: { flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#fff', borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 8, marginTop: 4 },
