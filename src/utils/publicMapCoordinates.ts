@@ -40,3 +40,24 @@ export function getPublicMapCoordinates(item: PublicCoordinatesSource): [number,
   }
   return validCoordinates(item.public_latitude, item.public_longitude);
 }
+
+/** Agrupa itens na MESMA coordenada publica para evitar marcadores sobrepostos.
+ * O grupo nunca acessa coordenadas particulares do cadastro.
+ */
+export function groupDonationsByPublicLocation<T extends PublicCoordinatesSource>(
+  items: T[]
+): Array<{ key: string; point: [number, number]; items: T[] }> {
+  const groups = new Map<string, { key: string; point: [number, number]; items: T[] }>();
+  for (const item of items) {
+    const point = getPublicMapCoordinates(item);
+    if (!point) continue;
+    const key = `${point[0]},${point[1]}`;
+    const group = groups.get(key);
+    if (group) {
+      group.items.push(item);
+    } else {
+      groups.set(key, { key, point, items: [item] });
+    }
+  }
+  return Array.from(groups.values());
+}
