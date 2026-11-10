@@ -1,6 +1,6 @@
 import { useAuth } from '@/hooks/useAuth';
-import { getPublicMapCoordinates } from '@/utils/publicMapCoordinates';
-import { getDonations, getProfile } from '@/services/databaseService';
+import { getPublicMapCoordinates, groupDonationsByPublicLocation } from '@/utils/publicMapCoordinates';
+import { getDonations, getProfile, getWarehouses } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -131,14 +131,30 @@ export default function MapScreenWeb() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [donationsError, setDonationsError] = useState(false);
   const [mapAttempt, setMapAttempt] = useState(0);
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
   const loadData = React.useCallback(async () => {
     setDonationsError(false);
+    setSelectedGroupKey(null);
     try {
-      const data = await getDonations(null, null, true);
-      setDonations(data || []);
+      const [data, warehouses] = await Promise.all([
+        getDonations(null, null, true),
+        getWarehouses(),
+      ]);
+      // Coordenadas exatas só vêm do cadastro institucional do galpão ativo,
+      // cuja divulgação foi expressamente autorizada pelo responsável.
+      // Não consultar latitude/longitude privadas da tabela items.
+      const warehousesById = new Map(
+        (warehouses || []).map((warehouse: any) => [warehouse.id, warehouse])
+      );
+      setDonations((data || []).map((item: any) => ({
+        ...item,
+        warehouse: item.warehouse_id
+          ? (warehousesById.get(item.warehouse_id) || item.warehouse)
+          : item.warehouse,
+      })));
 
       if (user) {
         const profile = await getProfile(user.id);
@@ -167,9 +183,19 @@ export default function MapScreenWeb() {
 
   const donationsWithPublicLocation = useMemo(
     () =>
-      filteredDonations.filter((item) => getPublicMapCoordinates(item) !== null),
+      filteredDonations.filter(
+        (item) => item.status === 'available' && getPublicMapCoordinates(item) !== null
+      ),
     [filteredDonations]
   );
+
+  const locationGroups = useMemo(
+    () => groupDonationsByPublicLocation(donationsWithPublicLocation),
+    [donationsWithPublicLocation]
+  );
+  const selectedGroup = locationGroups.find((group) => group.key === selectedGroupKey);
+  const visibleDonations = selectedGroup ? selectedGroup.items : filteredDonations;
+
 
   useEffect(() => {
     let active = true;
@@ -254,28 +280,45 @@ export default function MapScreenWeb() {
 
     const coordinates: [number, number][] = [];
 
-    donationsWithPublicLocation.forEach((item) => {
-      const point = getPublicMapCoordinates(item);
-      if (!point) return;
-      const [lng, lat] = point;
-      coordinates.push(point);
+    locationGroups.forEach((group) => {
+      const [lng, lat] = group.point;
+      coordinates.push(group.point);
 
-      const marker = new MapLibre.Marker({ color: categoryColor(item.category) })
-        .setLngLat([lng, lat])
-        .addTo(map);
+      // Um único marcador por local. Se houver múltiplas doações no mesmo
+      // galpão ou coordenada pública, abre-se uma lista acessível de escolhas.
+      const marker = group.items.length === 1
+        ? new MapLibre.Marker({ color: categoryColor(group.items[0].category) })
+        : new MapLibre.Marker({
+            element: (() => {
+              const circle = document.createElement('div');
+              circle.style.cssText = 'width:42px;height:42px;border-radius:50%;background:#003366;color:#fff;border:3px solid #fff;box-shadow:0 2px 8px #0004;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;cursor:pointer;';
+              circle.textContent = String(group.items.length);
+              return circle;
+            })(),
+          });
+      marker.setLngLat([lng, lat]).addTo(map);
 
       const element = marker.getElement();
-      element.title = item.title || 'Ver doacao';
+      element.title = group.items.length === 1
+        ? group.items[0].title || 'Ver doação'
+        : `Ver ${group.items.length} doações neste local`;
       element.setAttribute('role', 'button');
       element.setAttribute('tabindex', '0');
-      const navigateToItem = () => {
-        router.push({ pathname: '/donate/[id]', params: { id: item.id } });
+      element.setAttribute('aria-label', element.title);
+      const openMarker = () => {
+        if (group.items.length === 1) {
+          router.push({ pathname: '/donate/[id]', params: { id: group.items[0].id } });
+        } else {
+          // Reaproveita a lista rolável da vitrine abaixo do mapa.
+          // Não cria outro painel que ultrapasse a altura da tela mobile.
+          setSelectedGroupKey(group.key);
+        }
       };
-      element.addEventListener('click', navigateToItem);
+      element.addEventListener('click', openMarker);
       element.addEventListener('keydown', (event: KeyboardEvent) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          navigateToItem();
+          openMarker();
         }
       });
 
@@ -289,7 +332,7 @@ export default function MapScreenWeb() {
       coordinates.slice(1).forEach((point) => bounds.extend(point));
       map.fitBounds(bounds, { padding: 40, maxZoom: 14 });
     }
-  }, [donationsWithPublicLocation, mapReady, router]);
+  }, [locationGroups, mapReady, router]);
 
   const handleLogout = () => {
     Alert.alert('Sair', 'Deseja encerrar sua sessão?', [
@@ -307,7 +350,10 @@ export default function MapScreenWeb() {
             placeholder="Buscar doações..."
             style={styles.searchInput}
             value={search}
-            onChangeText={setSearch}
+            onChangeText={(value) => {
+              setSearch(value);
+              setSelectedGroupKey(null);
+            }}
           />
         </View>
         {isAdmin && (
@@ -365,6 +411,25 @@ export default function MapScreenWeb() {
 
       <ScrollView contentContainerStyle={styles.list}>
         <Text style={styles.sectionTitle}>Doações disponíveis</Text>
+        {selectedGroup && !donationsError && (
+          <View style={styles.locationFilter}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.locationFilterTitle}>Local selecionado no mapa</Text>
+              <Text style={styles.locationFilterCount}>
+                {selectedGroup.items.length} {selectedGroup.items.length === 1 ? 'doação disponível' : 'doações disponíveis'} neste local
+              </Text>
+            </View>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Limpar filtro de local e mostrar todas as doações"
+              onPress={() => setSelectedGroupKey(null)}
+              style={styles.clearLocationFilter}
+            >
+              <MaterialIcons name="close" size={16} color="#003366" />
+              <Text style={styles.clearLocationFilterText}>Mostrar todas</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {donationsError ? (
           <View style={{ gap: 10 }}>
             <Text style={styles.emptyText}>Não foi possível carregar as doações. Tente novamente.</Text>
@@ -372,10 +437,10 @@ export default function MapScreenWeb() {
               <Text style={styles.title}>Tentar novamente</Text>
             </TouchableOpacity>
           </View>
-        ) : filteredDonations.length === 0 ? (
+        ) : visibleDonations.length === 0 ? (
           <Text style={styles.emptyText}>Nenhuma doação encontrada.</Text>
         ) : (
-          filteredDonations.map((item) => (
+          visibleDonations.map((item) => (
             <TouchableOpacity
               key={item.id}
               style={styles.card}
@@ -460,6 +525,17 @@ const styles = StyleSheet.create({
   mapMessageText: { flex: 1, color: '#475569', fontSize: 13 },
   retryMap: { paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#e0f2fe', borderRadius: 8 },
   retryMapText: { color: '#0369a1', fontSize: 12, fontWeight: '700' },
+  locationFilter: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: 10, backgroundColor: '#e0f2fe', padding: 12,
+  },
+  locationFilterTitle: { color: '#003366', fontWeight: '700', fontSize: 13 },
+  locationFilterCount: { color: '#475569', fontSize: 12, marginTop: 3 },
+  clearLocationFilter: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    padding: 8, borderRadius: 8, backgroundColor: '#fff',
+  },
+  clearLocationFilterText: { color: '#003366', fontWeight: '700', fontSize: 12 },
   list: { padding: 12, paddingBottom: 32, gap: 10 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', marginBottom: 2 },
   emptyText: { color: '#64748b', paddingVertical: 18 },
