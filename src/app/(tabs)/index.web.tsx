@@ -189,6 +189,14 @@ export default function MapScreenWeb() {
     [filteredDonations]
   );
 
+  const withoutMappedLocation = useMemo(
+    () => filteredDonations.filter(
+      (item) => item.status === 'available' &&
+        item.warehouse_id && getPublicMapCoordinates(item) === null
+    ).length,
+    [filteredDonations]
+  );
+
   const locationGroups = useMemo(
     () => groupDonationsByPublicLocation(donationsWithPublicLocation),
     [donationsWithPublicLocation]
@@ -403,7 +411,9 @@ export default function MapScreenWeb() {
           <View style={styles.mapMessage}>
             <MaterialIcons name="location-off" size={18} color="#475569" />
             <Text style={styles.mapMessageText}>
-              Nenhuma doação filtrada possui localização pública para exibir.
+              {withoutMappedLocation > 0
+                ? `${withoutMappedLocation} doação(ões) vinculada(s) a galpão ainda sem coordenadas públicas confirmadas. Consulte Gestão de Galpões.`
+                : 'Nenhuma doação filtrada possui localização pública para exibir.'}
             </Text>
           </View>
         )}
