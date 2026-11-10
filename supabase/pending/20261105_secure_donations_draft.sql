@@ -315,13 +315,22 @@ REVOKE ALL ON TABLE public.items FROM PUBLIC, anon, authenticated;
 -- REVOKE em nivel de tabela nao remove GRANTs antigos em nivel de coluna.
 -- Remover explicitamente ALTERACOES diretas legadas, inclusive identidade
 -- do doador/reservante e status. As operacoes passam somente pelas RPCs.
-REVOKE INSERT, UPDATE, REFERENCES (
-  id, user_id, title, description, category, image_url, status,
+REVOKE INSERT (id, user_id, title, description, category, image_url, status,
   requested_by, reserved_at, warehouse_id, latitude, longitude,
   pickup_address, pickup_instructions, ttl_days, expires_at, is_urgent,
   created_at, collected_at, city, state, public_latitude,
-  public_longitude, location_precision, geocoded_at
-) ON TABLE public.items FROM PUBLIC, anon, authenticated;
+  public_longitude, location_precision, geocoded_at),
+  UPDATE (id, user_id, title, description, category, image_url, status,
+  requested_by, reserved_at, warehouse_id, latitude, longitude,
+  pickup_address, pickup_instructions, ttl_days, expires_at, is_urgent,
+  created_at, collected_at, city, state, public_latitude,
+  public_longitude, location_precision, geocoded_at),
+  REFERENCES (id, user_id, title, description, category, image_url, status,
+  requested_by, reserved_at, warehouse_id, latitude, longitude,
+  pickup_address, pickup_instructions, ttl_days, expires_at, is_urgent,
+  created_at, collected_at, city, state, public_latitude,
+  public_longitude, location_precision, geocoded_at)
+  ON TABLE public.items FROM PUBLIC, anon, authenticated;
 REVOKE SELECT (latitude, longitude, pickup_address, pickup_instructions)
   ON TABLE public.items FROM PUBLIC, anon, authenticated;
 GRANT SELECT (
@@ -332,7 +341,9 @@ GRANT SELECT (
 
 REVOKE ALL ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
 -- Prevenir autoelevacao e alteracao de perfis por grants legados de coluna.
-REVOKE INSERT, UPDATE, REFERENCES (id, name, phone, is_admin)
+REVOKE INSERT (id, name, phone, is_admin),
+  UPDATE (id, name, phone, is_admin),
+  REFERENCES (id, name, phone, is_admin)
   ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
 REVOKE SELECT (phone) ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
 GRANT SELECT (id, name, is_admin) ON TABLE public.profiles TO authenticated;
