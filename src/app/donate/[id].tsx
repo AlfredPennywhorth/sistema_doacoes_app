@@ -23,6 +23,7 @@ export default function DonationDetailScreen() {
     const router = useRouter();
     const { user } = useAuth();
     const [item, setItem] = useState<any>(null);
+    const [imageFailed, setImageFailed] = useState(false);
     const [loading, setLoading] = useState(true);
     const [reserving, setReserving] = useState(false);
     const [isAdmin, setIsAdmin] = useState(false);
@@ -32,6 +33,7 @@ export default function DonationDetailScreen() {
         setLoading(true);
         const data = await getDonationById(id as string);
         setItem(data);
+        setImageFailed(false);
 
         if (user) {
             const profile = await getProfile(user.id);
@@ -209,11 +211,25 @@ export default function DonationDetailScreen() {
             <ScrollView contentContainerStyle={styles.content}>
                 {/* Imagem */}
                 <View style={styles.imageBox}>
-                    {item.image_url ? (
-                        <Image source={{ uri: item.image_url }} style={styles.image} resizeMode="cover" />
+                    {typeof item.image_url === 'string' && item.image_url.trim() && !imageFailed ? (
+                        <Image
+                            source={{ uri: item.image_url }}
+                            style={styles.image}
+                            resizeMode="cover"
+                            onError={() => setImageFailed(true)}
+                            accessibilityLabel="Foto do item doado"
+                        />
                     ) : (
                         <View style={styles.imagePlaceholder}>
-                            <MaterialIcons name="image-not-supported" size={64} color="#cbd5e1" />
+                            <MaterialIcons name="no-photography" size={48} color="#64748b" />
+                            <Text style={styles.noPhotoTitle}>
+                                {imageFailed ? 'Foto indisponível' : 'Item sem foto'}
+                            </Text>
+                            <Text style={styles.noPhotoHint}>
+                                {imageFailed
+                                    ? 'Não foi possível exibir a foto cadastrada.'
+                                    : 'O doador não adicionou uma foto deste item.'}
+                            </Text>
                         </View>
                     )}
                     <View style={[
@@ -419,7 +435,9 @@ const styles = StyleSheet.create({
     content: { paddingBottom: 120 },
     imageBox: { width: '100%', height: 300, backgroundColor: '#f1f5f9', position: 'relative' },
     image: { width: '100%', height: '100%' },
-    imagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+    imagePlaceholder: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+    noPhotoTitle: { color: '#475569', fontSize: 18, fontWeight: '700', marginTop: 12 },
+    noPhotoHint: { color: '#64748b', fontSize: 13, textAlign: 'center', marginTop: 6 },
     badge: {
         position: 'absolute', bottom: 16, left: 16,
         backgroundColor: '#059669', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,

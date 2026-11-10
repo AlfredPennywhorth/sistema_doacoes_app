@@ -39,6 +39,8 @@ jobs:
         run: npm run lint
       - name: Testar privacidade das coordenadas do mapa
         run: npx jest src/utils/publicMapCoordinates.test.ts --runInBand --watch=false
+      - name: Validar geocodificacao dos galpoes
+        run: npx jest src/utils/warehouseGeocoding.test.ts --runInBand --watch=false
       - name: Exportar PWA
         run: npx expo export --platform web
       - name: Publicar fontes da interface
