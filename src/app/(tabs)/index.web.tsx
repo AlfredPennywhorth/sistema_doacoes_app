@@ -1,5 +1,5 @@
 import { useAuth } from '@/hooks/useAuth';
-import { getPublicMapCoordinates } from '@/utils/publicMapCoordinates';
+import { getPublicMapCoordinates, groupDonationsByPublicLocation } from '@/utils/publicMapCoordinates';
 import { getDonations, getProfile, getWarehouses } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -131,6 +131,7 @@ export default function MapScreenWeb() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [donationsError, setDonationsError] = useState(false);
   const [mapAttempt, setMapAttempt] = useState(0);
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
@@ -186,6 +187,13 @@ export default function MapScreenWeb() {
       ),
     [filteredDonations]
   );
+
+  const locationGroups = useMemo(
+    () => groupDonationsByPublicLocation(donationsWithPublicLocation),
+    [donationsWithPublicLocation]
+  );
+  const selectedGroup = locationGroups.find((group) => group.key === selectedGroupKey);
+
 
   useEffect(() => {
     let active = true;
@@ -270,28 +278,43 @@ export default function MapScreenWeb() {
 
     const coordinates: [number, number][] = [];
 
-    donationsWithPublicLocation.forEach((item) => {
-      const point = getPublicMapCoordinates(item);
-      if (!point) return;
-      const [lng, lat] = point;
-      coordinates.push(point);
+    locationGroups.forEach((group) => {
+      const [lng, lat] = group.point;
+      coordinates.push(group.point);
 
-      const marker = new MapLibre.Marker({ color: categoryColor(item.category) })
-        .setLngLat([lng, lat])
-        .addTo(map);
+      // Um único marcador por local. Se houver múltiplas doações no mesmo
+      // galpão ou coordenada pública, abre-se uma lista acessível de escolhas.
+      const marker = group.items.length === 1
+        ? new MapLibre.Marker({ color: categoryColor(group.items[0].category) })
+        : new MapLibre.Marker({
+            element: (() => {
+              const circle = document.createElement('div');
+              circle.style.cssText = 'width:42px;height:42px;border-radius:50%;background:#003366;color:#fff;border:3px solid #fff;box-shadow:0 2px 8px #0004;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;cursor:pointer;';
+              circle.textContent = String(group.items.length);
+              return circle;
+            })(),
+          });
+      marker.setLngLat([lng, lat]).addTo(map);
 
       const element = marker.getElement();
-      element.title = item.title || 'Ver doacao';
+      element.title = group.items.length === 1
+        ? group.items[0].title || 'Ver doação'
+        : `Ver ${group.items.length} doações neste local`;
       element.setAttribute('role', 'button');
       element.setAttribute('tabindex', '0');
-      const navigateToItem = () => {
-        router.push({ pathname: '/donate/[id]', params: { id: item.id } });
+      element.setAttribute('aria-label', element.title);
+      const openMarker = () => {
+        if (group.items.length === 1) {
+          router.push({ pathname: '/donate/[id]', params: { id: group.items[0].id } });
+        } else {
+          setSelectedGroupKey(group.key);
+        }
       };
-      element.addEventListener('click', navigateToItem);
+      element.addEventListener('click', openMarker);
       element.addEventListener('keydown', (event: KeyboardEvent) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          navigateToItem();
+          openMarker();
         }
       });
 
@@ -305,7 +328,7 @@ export default function MapScreenWeb() {
       coordinates.slice(1).forEach((point) => bounds.extend(point));
       map.fitBounds(bounds, { padding: 40, maxZoom: 14 });
     }
-  }, [donationsWithPublicLocation, mapReady, router]);
+  }, [locationGroups, mapReady, router]);
 
   const handleLogout = () => {
     Alert.alert('Sair', 'Deseja encerrar sua sessão?', [
@@ -366,6 +389,39 @@ export default function MapScreenWeb() {
             >
               <Text style={styles.retryMapText}>Tentar novamente</Text>
             </TouchableOpacity>
+          </View>
+        )}
+
+        {selectedGroup && (
+          <View style={styles.groupPanel}>
+            <View style={styles.groupHeader}>
+              <Text style={styles.groupHeading}>
+                {selectedGroup.items.length} doações neste local
+              </Text>
+              <TouchableOpacity
+                accessibilityRole="button"
+                accessibilityLabel="Fechar lista de doações do local"
+                onPress={() => setSelectedGroupKey(null)}
+                style={styles.groupClose}
+              >
+                <MaterialIcons name="close" size={20} color="#475569" />
+              </TouchableOpacity>
+            </View>
+            {selectedGroup.items.map((item: any) => (
+              <TouchableOpacity
+                key={item.id}
+                accessibilityRole="button"
+                accessibilityLabel={`Ver doação: ${item.title || 'Sem título'}`}
+                style={styles.groupItem}
+                onPress={() => router.push({ pathname: '/donate/[id]', params: { id: item.id } })}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.title}>{item.title || 'Doação'}</Text>
+                  <Text style={styles.meta}>{item.category}</Text>
+                </View>
+                <MaterialIcons name="chevron-right" size={20} color="#64748b" />
+              </TouchableOpacity>
+            ))}
           </View>
         )}
 
@@ -476,6 +532,11 @@ const styles = StyleSheet.create({
   mapMessageText: { flex: 1, color: '#475569', fontSize: 13 },
   retryMap: { paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#e0f2fe', borderRadius: 8 },
   retryMapText: { color: '#0369a1', fontSize: 12, fontWeight: '700' },
+  groupPanel: { paddingHorizontal: 14, paddingBottom: 12, backgroundColor: '#f8fafc', gap: 4 },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  groupHeading: { color: '#0f172a', fontWeight: '700', fontSize: 14 },
+  groupClose: { padding: 8 },
+  groupItem: { flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#fff', borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 8, marginTop: 4 },
   list: { padding: 12, paddingBottom: 32, gap: 10 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', marginBottom: 2 },
   emptyText: { color: '#64748b', paddingVertical: 18 },
