@@ -46,6 +46,20 @@ if (!fs.existsSync(iconsFont)) {
   if (!valid) errors.push('MaterialIcons.ttf invalido (HTML ou outro conteudo)');
 }
 
+// URL pública sem /node_modules: evita que Pages devolva index.html como TTF.
+const publishedFont = path.join(dist, 'fonts', 'MaterialIcons.ttf');
+if (!fs.existsSync(publishedFont)) {
+  errors.push('MaterialIcons.ttf nao publicado em dist/fonts');
+} else {
+  const head = fs.readFileSync(publishedFont).subarray(0, 4);
+  if (head.length !== 4 || !(
+    head.readUInt32BE(0) === 0x00010000 ||
+    ['OTTO', 'true', 'typ1'].includes(head.toString('latin1'))
+  )) {
+    errors.push('MaterialIcons.ttf invalido na URL publica /fonts');
+  }
+}
+
 const manifestFile = path.join(dist, 'manifest.json');
 if (fs.existsSync(manifestFile)) {
   try {
