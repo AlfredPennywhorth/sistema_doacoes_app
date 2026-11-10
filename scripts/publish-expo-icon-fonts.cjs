@@ -68,11 +68,11 @@ function rewriteBundle(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const file = path.join(dir, entry.name);
     if (entry.isDirectory()) { rewriteBundle(file); continue; }
-    if (!entry.isFile() || !/\\.(?:js|css)$/.test(entry.name)) continue;
+    if (!entry.isFile() || !/\.(?:js|css)$/.test(entry.name)) continue;
     const before = fs.readFileSync(file, 'utf8');
     if (before.includes('vector-icons') && before.includes('.ttf')) candidateFiles++;
     const after = before.replace(
-      /(?:\\/?assets\\/node_modules\\/(?:@expo|%40expo)\\/vector-icons\\/)[^"'\\s\\x60]*?([A-Za-z0-9_-]+\\.ttf)/g,
+      /(?:\/?assets\/node_modules\/(?:@expo|%40expo)\/vector-icons\/)[^"'\s\x60]*?([A-Za-z0-9_-]+\.ttf)/g,
       (_match, name) => {
         if (!fs.existsSync(path.join(publicFontsRoot, name))) {
           throw new Error('Fonte referenciada pelo bundle nao existe: ' + name);
