@@ -2,10 +2,9 @@ import { createWarehouse, getWarehouses, updateWarehouse } from '@/services/data
 import { geocodePublicWarehouse, type WarehouseGeocodeCandidate } from '@/utils/warehouseGeocoding';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     Linking,
     Modal,
@@ -35,25 +34,58 @@ export default function AdminWarehouses() {
     const [confirmedLocation, setConfirmedLocation] = useState<WarehouseGeocodeCandidate | null>(null);
     const [originalAddress, setOriginalAddress] = useState('');
     const [originalHasLocation, setOriginalHasLocation] = useState(false);
+    const [formMessage, setFormMessage] = useState<string | null>(null);
+    const requestVersion = useRef(0);
+    const activeModalRef = useRef(false);
+    const currentAddressRef = useRef('');
+
+    const invalidateGeocoding = () => {
+        requestVersion.current += 1;
+        setGeocodeResults([]);
+        setConfirmedLocation(null);
+        setGeocoding(false);
+    };
+    const closeEditor = () => {
+        activeModalRef.current = false;
+        invalidateGeocoding();
+        setFormMessage(null);
+        setModalVisible(false);
+    };
+    const openEditor = (newAddress: string) => {
+        invalidateGeocoding();
+        currentAddressRef.current = newAddress;
+        activeModalRef.current = true;
+        setFormMessage(null);
+        setModalVisible(true);
+    };
     // Gate temporário: nenhuma coordenada escrita antes de backup recuperável.
     // A flag só habilita o fluxo visual; políticas RLS devem autorizar a gravação.
     const geocodingSaveEnabled = process.env.EXPO_PUBLIC_ENABLE_WAREHOUSE_GEOCODING_SAVE === 'true';
 
     const searchLocation = async () => {
-        if (geocoding || submitting) return;
+        if (geocoding || submitting || !activeModalRef.current) return;
+        const searchedAddress = currentAddressRef.current;
+        const version = ++requestVersion.current;
+        const stillCurrent = () =>
+            activeModalRef.current &&
+            requestVersion.current === version &&
+            currentAddressRef.current === searchedAddress;
         setGeocoding(true);
         setConfirmedLocation(null);
         setGeocodeResults([]);
+        setFormMessage(null);
         try {
-            const candidates = await geocodePublicWarehouse(address);
+            const candidates = await geocodePublicWarehouse(searchedAddress);
+            if (!stillCurrent()) return;
             setGeocodeResults(candidates);
             if (!candidates.length) {
-                Alert.alert('Localização não encontrada', 'Confira o endereço ou verifique o ponto manualmente no mapa.');
+                setFormMessage('Localização não encontrada. Confira o endereço e pesquise novamente.');
             }
         } catch (error) {
-            Alert.alert('Busca indisponível', error instanceof Error ? error.message : 'Não foi possível localizar o endereço.');
+            if (!stillCurrent()) return;
+            setFormMessage(error instanceof Error ? error.message : 'Não foi possível localizar o endereço.');
         } finally {
-            setGeocoding(false);
+            if (stillCurrent()) setGeocoding(false);
         }
     };
 
@@ -76,16 +108,16 @@ export default function AdminWarehouses() {
 
     const handleSave = async () => {
         if (!name.trim() || !address.trim()) {
-            Alert.alert('Erro', 'Preencha todos os campos.');
+            setFormMessage('Preencha o nome do local e o endereço completo.');
             return;
         }
 
         if (confirmedLocation && !geocodingSaveEnabled) {
-            Alert.alert('Gravação de coordenadas bloqueada', 'A localização foi pesquisada, mas só poderá ser salva após aprovação do backup completo do Supabase.');
+            setFormMessage('Gravação de coordenadas bloqueada até a aprovação do backup completo do Supabase.');
             return;
         }
         if (editId && address.trim() !== originalAddress.trim() && !confirmedLocation && originalHasLocation) {
-            Alert.alert('Confirme o novo local', 'O endereço mudou. Pesquise e confirme uma localização antes de salvar, para não manter coordenadas antigas.');
+            setFormMessage('O endereço mudou. Pesquise e confirme a nova localização antes de salvar, para não manter coordenadas antigas.');
             return;
         }
 
@@ -102,11 +134,11 @@ export default function AdminWarehouses() {
         setSubmitting(false);
 
         if (res.success) {
-            setModalVisible(false);
+            closeEditor();
             resetForm();
             load();
         } else {
-            Alert.alert('Erro', 'Não foi possível salvar o galpão.');
+            setFormMessage('Não foi possível salvar o galpão. Confira os dados e tente novamente.');
         }
     };
 
@@ -118,6 +150,7 @@ export default function AdminWarehouses() {
         setOriginalHasLocation(false);
         setGeocodeResults([]);
         setConfirmedLocation(null);
+        setFormMessage(null);
     };
 
     const handleToggleActive = async (item: any) => {
@@ -145,9 +178,7 @@ export default function AdminWarehouses() {
                         setAddress(item.address);
                         setOriginalAddress(item.address);
                         setOriginalHasLocation(item.latitude !== null && item.latitude !== undefined && item.longitude !== null && item.longitude !== undefined);
-                        setGeocodeResults([]);
-                        setConfirmedLocation(null);
-                        setModalVisible(true);
+                        openEditor(item.address);
                     }}
                 >
                     <MaterialIcons name="edit" size={20} color="#64748b" />
@@ -188,7 +219,7 @@ export default function AdminWarehouses() {
                 style={styles.fab}
                 onPress={() => {
                     resetForm();
-                    setModalVisible(true);
+                    openEditor('');
                 }}
             >
                 <MaterialIcons name="add" size={28} color="#fff" />
@@ -198,7 +229,7 @@ export default function AdminWarehouses() {
                 visible={modalVisible}
                 animationType="slide"
                 transparent={true}
-                onRequestClose={() => setModalVisible(false)}
+                onRequestClose={closeEditor}
             >
                 <View style={styles.modalOverlay}>
                     <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
@@ -220,9 +251,10 @@ export default function AdminWarehouses() {
                             multiline
                             value={address}
                             onChangeText={(value) => {
+                                currentAddressRef.current = value;
                                 setAddress(value);
-                                setConfirmedLocation(null);
-                                setGeocodeResults([]);
+                                invalidateGeocoding();
+                                setFormMessage(null);
                             }}
                         />
 
@@ -242,6 +274,9 @@ export default function AdminWarehouses() {
                             Sugestões do OpenStreetMap/Photon. Verifique o ponto antes de confirmar.
                             Esta consulta é feita apenas quando você solicita.
                         </Text>
+                        {formMessage && (
+                            <Text accessibilityRole="alert" style={styles.formMessage}>{formMessage}</Text>
+                        )}
                         {geocodeResults.length > 0 && (
                             <ScrollView style={styles.geocodeList} nestedScrollEnabled>
                                 {geocodeResults.map((candidate, index) => (
@@ -285,7 +320,7 @@ export default function AdminWarehouses() {
                         <View style={styles.modalActions}>
                             <TouchableOpacity
                                 style={styles.cancelBtn}
-                                onPress={() => setModalVisible(false)}
+                                onPress={closeEditor}
                             >
                                 <Text style={styles.cancelBtnText}>Cancelar</Text>
                             </TouchableOpacity>
@@ -361,6 +396,7 @@ const styles = StyleSheet.create({
     mapLink: { padding: 10 },
     locationConfirm: { fontSize: 12, color: '#065f46', marginTop: 8 },
     geocodeGate: { fontSize: 12, color: '#92400e', marginTop: 8, marginBottom: 4 },
+    formMessage: { color: '#991b1b', backgroundColor: '#fef2f2', padding: 10, borderRadius: 8, marginTop: 10, fontSize: 13 },
     modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#003366', marginBottom: 20 },
     label: { fontSize: 14, fontWeight: 'bold', color: '#64748b', marginBottom: 8 },
     input: { backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 12, marginBottom: 16, fontSize: 15 },
