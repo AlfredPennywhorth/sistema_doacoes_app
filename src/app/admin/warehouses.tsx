@@ -34,6 +34,7 @@ export default function AdminWarehouses() {
     const [geocodeResults, setGeocodeResults] = useState<WarehouseGeocodeCandidate[]>([]);
     const [confirmedLocation, setConfirmedLocation] = useState<WarehouseGeocodeCandidate | null>(null);
     const [originalAddress, setOriginalAddress] = useState('');
+    const [originalHasLocation, setOriginalHasLocation] = useState(false);
     // Gate temporário: nenhuma coordenada escrita antes de backup recuperável.
     // A flag só habilita o fluxo visual; políticas RLS devem autorizar a gravação.
     const geocodingSaveEnabled = process.env.EXPO_PUBLIC_ENABLE_WAREHOUSE_GEOCODING_SAVE === 'true';
@@ -83,7 +84,7 @@ export default function AdminWarehouses() {
             Alert.alert('Gravação de coordenadas bloqueada', 'A localização foi pesquisada, mas só poderá ser salva após aprovação do backup completo do Supabase.');
             return;
         }
-        if (editId && address.trim() !== originalAddress.trim() && !confirmedLocation && geocodingSaveEnabled) {
+        if (editId && address.trim() !== originalAddress.trim() && !confirmedLocation && originalHasLocation) {
             Alert.alert('Confirme o novo local', 'O endereço mudou. Pesquise e confirme uma localização antes de salvar, para não manter coordenadas antigas.');
             return;
         }
@@ -114,6 +115,7 @@ export default function AdminWarehouses() {
         setName('');
         setAddress('');
         setOriginalAddress('');
+        setOriginalHasLocation(false);
         setGeocodeResults([]);
         setConfirmedLocation(null);
     };
@@ -142,6 +144,7 @@ export default function AdminWarehouses() {
                         setName(item.name);
                         setAddress(item.address);
                         setOriginalAddress(item.address);
+                        setOriginalHasLocation(item.latitude !== null && item.latitude !== undefined && item.longitude !== null && item.longitude !== undefined);
                         setGeocodeResults([]);
                         setConfirmedLocation(null);
                         setModalVisible(true);
