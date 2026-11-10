@@ -18,6 +18,7 @@ export default function ListScreen() {
     const [donations, setDonations] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [loadError, setLoadError] = useState(false);
 
     const [selectedCategory, setSelectedCategory] = useState(params.category || 'TODOS');
     const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -30,6 +31,7 @@ export default function ListScreen() {
     const load = useCallback(async () => {
         setLoading(true);
         setRefreshing(true);
+        setLoadError(false);
         try {
             const categoryFilter = selectedCategory === 'TODOS' ? null : selectedCategory;
             // Note: Our databaseService.js getDonations only takes category for now. 
@@ -42,7 +44,8 @@ export default function ListScreen() {
             const wData = await getWarehouses();
             setWarehouses(wData);
         } catch (error) {
-            console.error("Failed to load data:", error);
+            console.error("[ListScreen] Falha no carregamento dos itens:", error instanceof Error ? error.message : "unknown");
+            setLoadError(true);
         } finally {
             setLoading(false);
             setRefreshing(false);
@@ -99,6 +102,13 @@ export default function ListScreen() {
                 {loading && !refreshing ? (
                     <View style={styles.centered}>
                         <ActivityIndicator size="large" color="#003366" />
+                    </View>
+                ) : loadError ? (
+                    <View style={styles.centered}>
+                        <Text style={styles.emptyText}>Não foi possível carregar as doações. Tente novamente.</Text>
+                        <TouchableOpacity onPress={load} style={styles.retryBtn} accessibilityRole="button">
+                            <Text style={styles.retryText}>Tentar novamente</Text>
+                        </TouchableOpacity>
                     </View>
                 ) : filteredDonations.length === 0 ? (
                     <View style={styles.centered}>

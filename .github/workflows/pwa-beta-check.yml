@@ -1,0 +1,50 @@
+name: PWA Beta — qualidade e exportação web
+
+on:
+  pull_request:
+    branches: [feature/integracao-apis-publicas, chore/cloudflare-pages-pwa-prep-20261108]
+    paths:
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/**"
+      - ".github/workflows/pwa-beta-check.yml"
+  push:
+    branches: [integration/pwa-visual-beta-20261109, fix/pwa-beta-console-root-causes-20261109]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pwa-beta:
+    name: Lint e export web (sem credenciais)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CI: "1"
+      EXPO_PUBLIC_ALLOW_GUEST_TEST_ACCESS: "false"
+      EXPO_PUBLIC_SUPABASE_URL: "https://placeholder.supabase.co"
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: "placeholder-for-build-only"
+      EXPO_PUBLIC_SUPPORT_EMAIL: "suporte@example.invalid"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Instalar dependências
+        run: npm ci
+      - name: ESLint
+        run: npm run lint
+      - name: Testar privacidade das coordenadas do mapa
+        run: npx jest src/utils/publicMapCoordinates.test.ts --runInBand --watch=false
+      - name: Exportar PWA
+        run: npx expo export --platform web
+      - name: Publicar fontes da interface
+        run: npm run publish:pwa-fonts
+      - name: Verificar estrutura de PWA
+        run: npm run verify:pwa
+
+# Não publicar build; variáveis são fictícias. Nunca usar este job
+# para promoção a Cloudflare Pages ou Microsoft Store.

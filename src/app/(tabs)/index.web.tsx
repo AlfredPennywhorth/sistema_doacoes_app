@@ -1,6 +1,6 @@
 import { useAuth } from '@/hooks/useAuth';
-import { getPublicMapCoordinates } from '@/utils/publicMapCoordinates';
-import { getDonations, getProfile } from '@/services/databaseService';
+import { getPublicMapCoordinates, groupDonationsByPublicLocation } from '@/utils/publicMapCoordinates';
+import { getDonations, getProfile, getWarehouses } from '@/services/databaseService';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -42,35 +42,79 @@ function categoryIcon(cat: string) {
 const MAPLIBRE_VERSION = '5.24.0';
 const MAP_STYLE = 'https://tiles.openfreemap.org/styles/liberty';
 
+// Dois CDNs para o mesmo arquivo/versionamento. A falha em um provedor
+// não deve inutilizar a tela. A lista de doações continua disponível.
+const MAPLIBRE_CDNS = [
+  `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/`,
+  `https://cdn.jsdelivr.net/npm/maplibre-gl@${MAPLIBRE_VERSION}/dist/`,
+];
+const SCRIPT_TIMEOUT_MS = 12000;
+
+function loadMapLibreFrom(src: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.dataset.maplibreLoader = 'true';
+    let finished = false;
+    const done = (error?: Error) => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(timeout);
+      script.onload = null;
+      script.onerror = null;
+      if (error) {
+        script.remove();
+        reject(error);
+      } else {
+        resolve(window.maplibregl);
+      }
+    };
+    const timeout = window.setTimeout(
+      () => done(new Error('Tempo limite para baixar o MapLibre.')),
+      SCRIPT_TIMEOUT_MS
+    );
+    script.onload = () =>
+      done(window.maplibregl ? undefined : new Error('MapLibre não inicializou.'));
+    script.onerror = () => done(new Error('Falha ao baixar a biblioteca MapLibre.'));
+    document.body.appendChild(script);
+  });
+}
+
 function loadMapLibre(): Promise<any> {
   if (typeof window === 'undefined') {
-    return Promise.reject(new Error('Mapa web disponivel apenas no navegador.'));
+    return Promise.reject(new Error('Mapa web disponível apenas no navegador.'));
   }
-
   if (window.maplibregl) return Promise.resolve(window.maplibregl);
   if (window.__mapLibreLoadingPromise) return window.__mapLibreLoadingPromise;
 
-  window.__mapLibreLoadingPromise = new Promise((resolve, reject) => {
+  window.__mapLibreLoadingPromise = (async () => {
+    // O CSS é necessário para controles, marcadores e apresentação do mapa.
     if (!document.getElementById('maplibre-css')) {
       const css = document.createElement('link');
       css.id = 'maplibre-css';
       css.rel = 'stylesheet';
-      css.href = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.css`;
+      css.href = `${MAPLIBRE_CDNS[0]}maplibre-gl.css`;
+      css.onerror = () => {
+        console.warn('[MapScreenWeb] CSS do MapLibre indisponível no CDN primário.');
+        css.onerror = null;
+        css.href = `${MAPLIBRE_CDNS[1]}maplibre-gl.css`;
+      };
       document.head.appendChild(css);
     }
 
-    const script = document.createElement('script');
-    script.id = 'maplibre-js';
-    script.src = `https://unpkg.com/maplibre-gl@${MAPLIBRE_VERSION}/dist/maplibre-gl.js`;
-    script.onload = () => {
-      if (window.maplibregl) resolve(window.maplibregl);
-      else reject(new Error('MapLibre nao inicializou.'));
-    };
-    script.onerror = () => reject(new Error('Falha ao carregar os recursos do mapa.'));
-    document.body.appendChild(script);
-  }).catch((error) => {
+    for (const base of MAPLIBRE_CDNS) {
+      try {
+        return await loadMapLibreFrom(`${base}maplibre-gl.js`);
+      } catch (error) {
+        console.warn('[MapScreenWeb] Falha no provedor de mapa:', base, error);
+      }
+    }
+    throw new Error('Não foi possível carregar o MapLibre nos provedores disponíveis.');
+  })().catch((error) => {
     window.__mapLibreLoadingPromise = undefined;
-    document.getElementById('maplibre-js')?.remove();
+    document.querySelectorAll('script[data-maplibre-loader="true"]')
+      .forEach((script) => script.remove());
     throw error;
   });
 
@@ -85,20 +129,40 @@ export default function MapScreenWeb() {
   const [isAdmin, setIsAdmin] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [donationsError, setDonationsError] = useState(false);
+  const [mapAttempt, setMapAttempt] = useState(0);
+  const [selectedGroupKey, setSelectedGroupKey] = useState<string | null>(null);
   const mapRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
 
   const loadData = React.useCallback(async () => {
+    setDonationsError(false);
+    setSelectedGroupKey(null);
     try {
-      const data = await getDonations(null, null, true);
-      setDonations(data || []);
+      const [data, warehouses] = await Promise.all([
+        getDonations(null, null, true),
+        getWarehouses(),
+      ]);
+      // Coordenadas exatas só vêm do cadastro institucional do galpão ativo,
+      // cuja divulgação foi expressamente autorizada pelo responsável.
+      // Não consultar latitude/longitude privadas da tabela items.
+      const warehousesById = new Map(
+        (warehouses || []).map((warehouse: any) => [warehouse.id, warehouse])
+      );
+      setDonations((data || []).map((item: any) => ({
+        ...item,
+        warehouse: item.warehouse_id
+          ? (warehousesById.get(item.warehouse_id) || item.warehouse)
+          : item.warehouse,
+      })));
 
       if (user) {
         const profile = await getProfile(user.id);
         setIsAdmin(Boolean(profile?.is_admin));
       }
     } catch (error) {
-      console.error('[MapScreenWeb] Erro ao carregar dados:', error);
+      console.error('[MapScreenWeb] Erro ao carregar dados:', error instanceof Error ? error.message : 'unknown');
+      setDonationsError(true);
     }
   }, [user]);
 
@@ -119,12 +183,25 @@ export default function MapScreenWeb() {
 
   const donationsWithPublicLocation = useMemo(
     () =>
-      filteredDonations.filter((item) => getPublicMapCoordinates(item) !== null),
+      filteredDonations.filter(
+        (item) => item.status === 'available' && getPublicMapCoordinates(item) !== null
+      ),
     [filteredDonations]
   );
 
+  const locationGroups = useMemo(
+    () => groupDonationsByPublicLocation(donationsWithPublicLocation),
+    [donationsWithPublicLocation]
+  );
+  const selectedGroup = locationGroups.find((group) => group.key === selectedGroupKey);
+  const visibleDonations = selectedGroup ? selectedGroup.items : filteredDonations;
+
+
   useEffect(() => {
     let active = true;
+    let mapLoadTimeout: ReturnType<typeof setTimeout> | undefined;
+    setMapReady(false);
+    setMapError(null);
 
     loadMapLibre()
       .then((MapLibre) => {
@@ -133,33 +210,47 @@ export default function MapScreenWeb() {
         const element = document.getElementById('donations-map');
         if (!element) return;
 
-        if (!MapLibre.supported()) {
-          setMapError('O navegador nao suporta o mapa interativo. A lista de doacoes continua disponivel.');
+        // MapLibre GL JS v5.24 distribuído em UMD não garante a API
+        // estática supported(). O erro "supported is not a function"
+        // interrompia o mapa antes da criação do objeto.
+        if (typeof MapLibre.Map !== 'function') {
+          setMapError('Biblioteca do mapa inválida. Tente novamente.');
           return;
         }
 
-        const map = new MapLibre.Map({
+        let map: any;
+        try {
+          map = new MapLibre.Map({
           container: element,
           style: MAP_STYLE,
           center: [-46.6333, -23.5505],
           zoom: 10,
           attributionControl: true,
-        });
+          });
+        } catch (error) {
+          console.error('[MapScreenWeb] Erro na criação do mapa:', error);
+          setMapError('O navegador não conseguiu inicializar o mapa interativo.');
+          return;
+        }
 
         map.addControl(new MapLibre.NavigationControl(), 'top-left');
         mapRef.current = map;
 
+        mapLoadTimeout = setTimeout(() => {
+          if (active) setMapError('O mapa demorou para carregar. Tente novamente ou consulte a lista de doações.');
+        }, 20000);
         map.once('load', () => {
+          if (mapLoadTimeout) clearTimeout(mapLoadTimeout);
           if (active) {
+            setMapError(null);
             setMapReady(true);
             map.resize();
           }
         });
         map.on('error', (event: any) => {
-          console.error('[MapScreenWeb] Erro ao carregar mapa:', event.error);
-          if (active) {
-            setMapError('O mapa-base nao esta disponivel. A lista de doacoes continua acessivel.');
-          }
+          console.error('[MapScreenWeb] Falha de recurso do mapa:', event.error);
+          // Erros isolados de tile não devem esconder um mapa já funcional.
+          // Falhas na inicialização são diagnosticadas na homologação.
         });
       })
       .catch((error) => {
@@ -169,6 +260,7 @@ export default function MapScreenWeb() {
 
     return () => {
       active = false;
+      if (mapLoadTimeout) clearTimeout(mapLoadTimeout);
       markersRef.current.forEach((marker) => marker.remove());
       markersRef.current = [];
       if (mapRef.current) {
@@ -176,7 +268,7 @@ export default function MapScreenWeb() {
         mapRef.current = null;
       }
     };
-  }, []);
+  }, [mapAttempt]);
 
   useEffect(() => {
     if (!mapReady || !window.maplibregl || !mapRef.current) return;
@@ -188,28 +280,45 @@ export default function MapScreenWeb() {
 
     const coordinates: [number, number][] = [];
 
-    donationsWithPublicLocation.forEach((item) => {
-      const point = getPublicMapCoordinates(item);
-      if (!point) return;
-      const [lng, lat] = point;
-      coordinates.push(point);
+    locationGroups.forEach((group) => {
+      const [lng, lat] = group.point;
+      coordinates.push(group.point);
 
-      const marker = new MapLibre.Marker({ color: categoryColor(item.category) })
-        .setLngLat([lng, lat])
-        .addTo(map);
+      // Um único marcador por local. Se houver múltiplas doações no mesmo
+      // galpão ou coordenada pública, abre-se uma lista acessível de escolhas.
+      const marker = group.items.length === 1
+        ? new MapLibre.Marker({ color: categoryColor(group.items[0].category) })
+        : new MapLibre.Marker({
+            element: (() => {
+              const circle = document.createElement('div');
+              circle.style.cssText = 'width:42px;height:42px;border-radius:50%;background:#003366;color:#fff;border:3px solid #fff;box-shadow:0 2px 8px #0004;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;cursor:pointer;';
+              circle.textContent = String(group.items.length);
+              return circle;
+            })(),
+          });
+      marker.setLngLat([lng, lat]).addTo(map);
 
       const element = marker.getElement();
-      element.title = item.title || 'Ver doacao';
+      element.title = group.items.length === 1
+        ? group.items[0].title || 'Ver doação'
+        : `Ver ${group.items.length} doações neste local`;
       element.setAttribute('role', 'button');
       element.setAttribute('tabindex', '0');
-      const navigateToItem = () => {
-        router.push({ pathname: '/donate/[id]', params: { id: item.id } });
+      element.setAttribute('aria-label', element.title);
+      const openMarker = () => {
+        if (group.items.length === 1) {
+          router.push({ pathname: '/donate/[id]', params: { id: group.items[0].id } });
+        } else {
+          // Reaproveita a lista rolável da vitrine abaixo do mapa.
+          // Não cria outro painel que ultrapasse a altura da tela mobile.
+          setSelectedGroupKey(group.key);
+        }
       };
-      element.addEventListener('click', navigateToItem);
+      element.addEventListener('click', openMarker);
       element.addEventListener('keydown', (event: KeyboardEvent) => {
         if (event.key === 'Enter' || event.key === ' ') {
           event.preventDefault();
-          navigateToItem();
+          openMarker();
         }
       });
 
@@ -223,7 +332,7 @@ export default function MapScreenWeb() {
       coordinates.slice(1).forEach((point) => bounds.extend(point));
       map.fitBounds(bounds, { padding: 40, maxZoom: 14 });
     }
-  }, [donationsWithPublicLocation, mapReady, router]);
+  }, [locationGroups, mapReady, router]);
 
   const handleLogout = () => {
     Alert.alert('Sair', 'Deseja encerrar sua sessão?', [
@@ -241,7 +350,10 @@ export default function MapScreenWeb() {
             placeholder="Buscar doações..."
             style={styles.searchInput}
             value={search}
-            onChangeText={setSearch}
+            onChangeText={(value) => {
+              setSearch(value);
+              setSelectedGroupKey(null);
+            }}
           />
         </View>
         {isAdmin && (
@@ -276,6 +388,14 @@ export default function MapScreenWeb() {
           <View style={styles.mapMessage}>
             <MaterialIcons name="info-outline" size={18} color="#475569" />
             <Text style={styles.mapMessageText}>{mapError}</Text>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Tentar carregar mapa novamente"
+              onPress={() => setMapAttempt((attempt) => attempt + 1)}
+              style={styles.retryMap}
+            >
+              <Text style={styles.retryMapText}>Tentar novamente</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -291,10 +411,36 @@ export default function MapScreenWeb() {
 
       <ScrollView contentContainerStyle={styles.list}>
         <Text style={styles.sectionTitle}>Doações disponíveis</Text>
-        {filteredDonations.length === 0 ? (
+        {selectedGroup && !donationsError && (
+          <View style={styles.locationFilter}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.locationFilterTitle}>Local selecionado no mapa</Text>
+              <Text style={styles.locationFilterCount}>
+                {selectedGroup.items.length} {selectedGroup.items.length === 1 ? 'doação disponível' : 'doações disponíveis'} neste local
+              </Text>
+            </View>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Limpar filtro de local e mostrar todas as doações"
+              onPress={() => setSelectedGroupKey(null)}
+              style={styles.clearLocationFilter}
+            >
+              <MaterialIcons name="close" size={16} color="#003366" />
+              <Text style={styles.clearLocationFilterText}>Mostrar todas</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        {donationsError ? (
+          <View style={{ gap: 10 }}>
+            <Text style={styles.emptyText}>Não foi possível carregar as doações. Tente novamente.</Text>
+            <TouchableOpacity onPress={loadData} accessibilityRole="button">
+              <Text style={styles.title}>Tentar novamente</Text>
+            </TouchableOpacity>
+          </View>
+        ) : visibleDonations.length === 0 ? (
           <Text style={styles.emptyText}>Nenhuma doação encontrada.</Text>
         ) : (
-          filteredDonations.map((item) => (
+          visibleDonations.map((item) => (
             <TouchableOpacity
               key={item.id}
               style={styles.card}
@@ -377,6 +523,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8fafc',
   },
   mapMessageText: { flex: 1, color: '#475569', fontSize: 13 },
+  retryMap: { paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#e0f2fe', borderRadius: 8 },
+  retryMapText: { color: '#0369a1', fontSize: 12, fontWeight: '700' },
+  locationFilter: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: 10, backgroundColor: '#e0f2fe', padding: 12,
+  },
+  locationFilterTitle: { color: '#003366', fontWeight: '700', fontSize: 13 },
+  locationFilterCount: { color: '#475569', fontSize: 12, marginTop: 3 },
+  clearLocationFilter: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    padding: 8, borderRadius: 8, backgroundColor: '#fff',
+  },
+  clearLocationFilterText: { color: '#003366', fontWeight: '700', fontSize: 12 },
   list: { padding: 12, paddingBottom: 32, gap: 10 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', marginBottom: 2 },
   emptyText: { color: '#64748b', paddingVertical: 18 },

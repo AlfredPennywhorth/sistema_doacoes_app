@@ -11,7 +11,9 @@
     "lint": "expo lint",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "verify:pwa": "node scripts/check-pwa-export.cjs"
+    "verify:pwa": "node scripts/check-pwa-export.cjs",
+    "build:pages": "expo export --platform web && npm run publish:pwa-fonts && npm run verify:pwa",
+    "publish:pwa-fonts": "node scripts/publish-expo-icon-fonts.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

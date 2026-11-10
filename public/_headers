@@ -1,0 +1,9 @@
+# Evitar servir manifesto e service worker desatualizados entre releases.
+/service-worker.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/manifest.json
+  Cache-Control: no-cache, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, must-revalidate
