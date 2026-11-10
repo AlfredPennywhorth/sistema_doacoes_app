@@ -4,12 +4,14 @@
 // Um 404 em SPA pode retornar index.html ("<!DO") e causar OTS invalid sfntVersion.
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const root = path.resolve(__dirname, '..');
 const iconsRoot = path.join(root, 'node_modules', '@expo', 'vector-icons');
 const dist = path.join(root, 'dist');
 const assetsRoot = path.join(dist, 'assets', 'node_modules');
 const publicFontsRoot = path.join(dist, 'fonts');
+const fontsByContentHash = new Map();
 
 function findFonts(dir, collected = []) {
   if (!fs.existsSync(dir)) return collected;
@@ -41,6 +43,14 @@ for (const src of fonts) {
   if (!validSfnt(data)) {
     throw new Error('Fonte invalida no node_modules: ' + path.basename(src));
   }
+  const contentHash = crypto.createHash('md5').update(data).digest('hex');
+  const basename = path.basename(src);
+  // Expo/Metro pode usar o MD5 do conteudo como nome do asset exportado.
+  // O mapeamento associa cada hash à fonte original real, sem adivinhar glifos.
+  if (fontsByContentHash.has(contentHash) && fontsByContentHash.get(contentHash) !== basename) {
+    throw new Error('Colisao de identificador de fonte: ' + contentHash);
+  }
+  fontsByContentHash.set(contentHash, basename);
   const rel = path.relative(path.join(root, 'node_modules'), src);
   const target = path.join(assetsRoot, rel);
   fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -74,11 +84,18 @@ function rewriteBundle(dir) {
     const after = before.replace(
       /(?:\/?assets\/node_modules\/(?:@expo|%40expo)\/vector-icons\/)[^"'\s\x60]*?([A-Za-z0-9_-]+\.ttf)/g,
       (_match, name) => {
-        if (!fs.existsSync(path.join(publicFontsRoot, name))) {
-          throw new Error('Fonte referenciada pelo bundle nao existe: ' + name);
+        let resolvedName = name;
+        if (!fs.existsSync(path.join(publicFontsRoot, resolvedName))) {
+          // A versão estática do Expo frequentemente usa <md5>.ttf.
+          // Só substituímos quando o hash confere com a fonte de origem.
+          const hash = name.replace(/\.ttf$/i, '').toLowerCase();
+          resolvedName = fontsByContentHash.get(hash);
+        }
+        if (!resolvedName || !fs.existsSync(path.join(publicFontsRoot, resolvedName))) {
+          throw new Error('Nao foi possivel verificar a fonte referenciada pelo bundle: ' + name);
         }
         replaced++;
-        return '/fonts/' + name;
+        return '/fonts/' + resolvedName;
       }
     );
     if (after !== before) fs.writeFileSync(file, after);
