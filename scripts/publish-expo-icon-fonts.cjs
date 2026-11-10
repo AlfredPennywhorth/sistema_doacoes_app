@@ -4,11 +4,14 @@
 // Um 404 em SPA pode retornar index.html ("<!DO") e causar OTS invalid sfntVersion.
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const root = path.resolve(__dirname, '..');
 const iconsRoot = path.join(root, 'node_modules', '@expo', 'vector-icons');
 const dist = path.join(root, 'dist');
 const assetsRoot = path.join(dist, 'assets', 'node_modules');
+const publicFontsRoot = path.join(dist, 'fonts');
+const fontsByContentHash = new Map();
 
 function findFonts(dir, collected = []) {
   if (!fs.existsSync(dir)) return collected;
@@ -40,12 +43,67 @@ for (const src of fonts) {
   if (!validSfnt(data)) {
     throw new Error('Fonte invalida no node_modules: ' + path.basename(src));
   }
+  const contentHash = crypto.createHash('md5').update(data).digest('hex');
+  const basename = path.basename(src);
+  // Expo/Metro pode usar o MD5 do conteudo como nome do asset exportado.
+  // O mapeamento associa cada hash à fonte original real, sem adivinhar glifos.
+  if (fontsByContentHash.has(contentHash) && fontsByContentHash.get(contentHash) !== basename) {
+    throw new Error('Colisao de identificador de fonte: ' + contentHash);
+  }
+  fontsByContentHash.set(contentHash, basename);
   const rel = path.relative(path.join(root, 'node_modules'), src);
   const target = path.join(assetsRoot, rel);
   fs.mkdirSync(path.dirname(target), { recursive: true });
   fs.copyFileSync(src, target);
+  // Cloudflare pode não servir caminhos que contêm node_modules.
+  // Publica uma rota estável em /fonts, sem esse segmento.
+  const publicTarget = path.join(publicFontsRoot, path.basename(src));
+  fs.mkdirSync(publicFontsRoot, { recursive: true });
+  fs.copyFileSync(src, publicTarget);
+  if (!validSfnt(fs.readFileSync(publicTarget))) {
+    throw new Error('Fonte publica invalida: ' + path.basename(src));
+  }
   if (!validSfnt(fs.readFileSync(target))) {
     throw new Error('Falha na copia da fonte: ' + path.basename(src));
   }
 }
-console.log('Fontes vetoriais publicadas em dist/assets/node_modules: ' + fonts.length);
+// A exportação Expo pode embutir a URL original no JS ou CSS do bundle.
+// Redirecione a URL para os arquivos públicos realmente publicados.
+// Não substituir quaisquer outras fontes ou recursos de terceiros.
+const bundleRoot = path.join(dist, '_expo');
+let replaced = 0;
+let candidateFiles = 0;
+function rewriteBundle(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) { rewriteBundle(file); continue; }
+    if (!entry.isFile() || !/\.(?:js|css)$/.test(entry.name)) continue;
+    const before = fs.readFileSync(file, 'utf8');
+    if (before.includes('vector-icons') && before.includes('.ttf')) candidateFiles++;
+    const after = before.replace(
+      /(?:\/?assets\/node_modules\/(?:@expo|%40expo)\/vector-icons\/)[^"'\s\x60]*?([A-Za-z0-9_-]+\.ttf)/g,
+      (_match, name) => {
+        let resolvedName = name;
+        if (!fs.existsSync(path.join(publicFontsRoot, resolvedName))) {
+          // A versão estática do Expo frequentemente usa <md5>.ttf.
+          // Só substituímos quando o hash confere com a fonte de origem.
+          const hash = name.replace(/\.ttf$/i, '').toLowerCase();
+          resolvedName = fontsByContentHash.get(hash);
+        }
+        if (!resolvedName || !fs.existsSync(path.join(publicFontsRoot, resolvedName))) {
+          throw new Error('Nao foi possivel verificar a fonte referenciada pelo bundle: ' + name);
+        }
+        replaced++;
+        return '/fonts/' + resolvedName;
+      }
+    );
+    if (after !== before) fs.writeFileSync(file, after);
+  }
+}
+rewriteBundle(bundleRoot);
+if (candidateFiles > 0 && replaced === 0) {
+  throw new Error('O bundle faz referencia a fontes antigas mas nenhuma URL foi corrigida.');
+}
+console.log('Fontes publicadas em dist/fonts: ' + fonts.length +
+  '; referencias de fonte substituidas no bundle: ' + replaced);
