@@ -9,14 +9,14 @@ export interface PublicCoordinatesSource {
     latitude?: number | string | null;
     longitude?: number | string | null;
     is_active?: boolean | null;
-    public_map_approved?: boolean | null;
   } | null;
   public_latitude?: number | string | null;
   public_longitude?: number | string | null;
 }
 
-// Para galpões, localização exata só é pública quando houver aprovação
-// explícita registrada no backend. is_active NÃO significa autorização.
+// O responsavel autorizou expressamente a divulgacao das localizacoes
+// dos galpoes cadastrados. Somente o cadastro institucional ativo pode
+// fornecer coordenadas exatas; nunca usar coordenadas privadas de items.
 function validCoordinates(latitudeRaw: number | string | null | undefined, longitudeRaw: number | string | null | undefined): [number, number] | null {
   if (latitudeRaw === null || latitudeRaw === undefined || latitudeRaw === '' ||
       longitudeRaw === null || longitudeRaw === undefined || longitudeRaw === '') return null;
@@ -34,8 +34,7 @@ function validCoordinates(latitudeRaw: number | string | null | undefined, longi
  */
 export function getPublicMapCoordinates(item: PublicCoordinatesSource): [number, number] | null {
   const institutional = item.warehouse;
-  if (item.warehouse_id && institutional?.is_active === true &&
-      institutional.public_map_approved === true) {
+  if (item.warehouse_id && institutional?.is_active === true) {
     const warehousePoint = validCoordinates(institutional.latitude, institutional.longitude);
     if (warehousePoint) return warehousePoint;
   }
