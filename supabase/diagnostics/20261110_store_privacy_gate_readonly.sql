@@ -13,10 +13,10 @@ SELECT
   has_column_privilege(role_name,'public.profiles','phone','SELECT') AS telefone
 FROM (VALUES ('anon'),('authenticated')) AS v(role_name);
 SELECT
-  schemaname, tablename, rowsecurity, forcerowsecurity
-FROM pg_tables
-JOIN pg_class c ON c.oid = format('%I.%I',schemaname,tablename)::regclass
-WHERE schemaname='public' AND tablename IN ('items','profiles','warehouses','item_requests')
+  n.nspname AS schemaname, c.relname AS tablename,
+  c.relrowsecurity AS rowsecurity, c.relforcerowsecurity AS forcerowsecurity
+FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+WHERE n.nspname='public' AND c.relkind IN ('r','p') AND c.relname IN ('items','profiles','warehouses','item_requests')
 ORDER BY tablename;
 SELECT tablename, cmd, array_to_string(roles,',') AS papeis, COUNT(*) AS quantidade_politicas
 FROM pg_policies
