@@ -137,6 +137,7 @@ export default function MapScreenWeb() {
 
   const loadData = React.useCallback(async () => {
     setDonationsError(false);
+    setSelectedGroupKey(null);
     try {
       const [data, warehouses] = await Promise.all([
         getDonations(null, null, true),
@@ -193,6 +194,7 @@ export default function MapScreenWeb() {
     [donationsWithPublicLocation]
   );
   const selectedGroup = locationGroups.find((group) => group.key === selectedGroupKey);
+  const visibleDonations = selectedGroup ? selectedGroup.items : filteredDonations;
 
 
   useEffect(() => {
@@ -307,6 +309,8 @@ export default function MapScreenWeb() {
         if (group.items.length === 1) {
           router.push({ pathname: '/donate/[id]', params: { id: group.items[0].id } });
         } else {
+          // Reaproveita a lista rolável da vitrine abaixo do mapa.
+          // Não cria outro painel que ultrapasse a altura da tela mobile.
           setSelectedGroupKey(group.key);
         }
       };
@@ -346,7 +350,10 @@ export default function MapScreenWeb() {
             placeholder="Buscar doações..."
             style={styles.searchInput}
             value={search}
-            onChangeText={setSearch}
+            onChangeText={(value) => {
+              setSearch(value);
+              setSelectedGroupKey(null);
+            }}
           />
         </View>
         {isAdmin && (
@@ -392,48 +399,6 @@ export default function MapScreenWeb() {
           </View>
         )}
 
-        {selectedGroup && (
-          <View style={styles.groupPanel}>
-            <View style={styles.groupHeader}>
-              <Text style={styles.groupHeading}>
-                {selectedGroup.items.length} doações neste local
-              </Text>
-              <TouchableOpacity
-                accessibilityRole="button"
-                accessibilityLabel="Fechar lista de doações do local"
-                onPress={() => setSelectedGroupKey(null)}
-                style={styles.groupClose}
-              >
-                <MaterialIcons name="close" size={20} color="#475569" />
-              </TouchableOpacity>
-            </View>
-            <ScrollView
-              style={styles.groupScroll}
-              contentContainerStyle={styles.groupScrollContent}
-              nestedScrollEnabled
-              keyboardShouldPersistTaps="handled"
-              accessibilityLabel="Lista rolável de doações neste local"
-              showsVerticalScrollIndicator
-            >
-              {selectedGroup.items.map((item: any) => (
-                <TouchableOpacity
-                  key={item.id}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Ver doação: ${item.title || 'Sem título'}`}
-                  style={styles.groupItem}
-                  onPress={() => router.push({ pathname: '/donate/[id]', params: { id: item.id } })}
-                >
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.title}>{item.title || 'Doação'}</Text>
-                    <Text style={styles.meta}>{item.category}</Text>
-                  </View>
-                  <MaterialIcons name="chevron-right" size={20} color="#64748b" />
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
         {!mapError && mapReady && donationsWithPublicLocation.length === 0 && (
           <View style={styles.mapMessage}>
             <MaterialIcons name="location-off" size={18} color="#475569" />
@@ -446,6 +411,25 @@ export default function MapScreenWeb() {
 
       <ScrollView contentContainerStyle={styles.list}>
         <Text style={styles.sectionTitle}>Doações disponíveis</Text>
+        {selectedGroup && !donationsError && (
+          <View style={styles.locationFilter}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.locationFilterTitle}>Local selecionado no mapa</Text>
+              <Text style={styles.locationFilterCount}>
+                {selectedGroup.items.length} {selectedGroup.items.length === 1 ? 'doação disponível' : 'doações disponíveis'} neste local
+              </Text>
+            </View>
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Limpar filtro de local e mostrar todas as doações"
+              onPress={() => setSelectedGroupKey(null)}
+              style={styles.clearLocationFilter}
+            >
+              <MaterialIcons name="close" size={16} color="#003366" />
+              <Text style={styles.clearLocationFilterText}>Mostrar todas</Text>
+            </TouchableOpacity>
+          </View>
+        )}
         {donationsError ? (
           <View style={{ gap: 10 }}>
             <Text style={styles.emptyText}>Não foi possível carregar as doações. Tente novamente.</Text>
@@ -453,10 +437,10 @@ export default function MapScreenWeb() {
               <Text style={styles.title}>Tentar novamente</Text>
             </TouchableOpacity>
           </View>
-        ) : filteredDonations.length === 0 ? (
+        ) : visibleDonations.length === 0 ? (
           <Text style={styles.emptyText}>Nenhuma doação encontrada.</Text>
         ) : (
-          filteredDonations.map((item) => (
+          visibleDonations.map((item) => (
             <TouchableOpacity
               key={item.id}
               style={styles.card}
@@ -541,13 +525,17 @@ const styles = StyleSheet.create({
   mapMessageText: { flex: 1, color: '#475569', fontSize: 13 },
   retryMap: { paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#e0f2fe', borderRadius: 8 },
   retryMapText: { color: '#0369a1', fontSize: 12, fontWeight: '700' },
-  groupPanel: { paddingHorizontal: 14, paddingBottom: 12, backgroundColor: '#f8fafc', gap: 4 },
-  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  groupScroll: { maxHeight: 220, minHeight: 0 },
-  groupScrollContent: { paddingBottom: 8 },
-  groupHeading: { color: '#0f172a', fontWeight: '700', fontSize: 14 },
-  groupClose: { padding: 8 },
-  groupItem: { flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#fff', borderColor: '#e2e8f0', borderWidth: 1, borderRadius: 8, marginTop: 4 },
+  locationFilter: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: 10, backgroundColor: '#e0f2fe', padding: 12,
+  },
+  locationFilterTitle: { color: '#003366', fontWeight: '700', fontSize: 13 },
+  locationFilterCount: { color: '#475569', fontSize: 12, marginTop: 3 },
+  clearLocationFilter: {
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    padding: 8, borderRadius: 8, backgroundColor: '#fff',
+  },
+  clearLocationFilterText: { color: '#003366', fontWeight: '700', fontSize: 12 },
   list: { padding: 12, paddingBottom: 32, gap: 10 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#0f172a', marginBottom: 2 },
   emptyText: { color: '#64748b', paddingVertical: 18 },
