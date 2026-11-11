@@ -3,6 +3,7 @@
 // isolated fixture projects. Never prints row bodies or secrets.
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const { isPrivilegeDenied } = require('./security-p0-response.cjs');
 
 const required = [
   'P0_ISOLATED_URL','P0_ISOLATED_ANON_KEY','P0_TEST_JWT_A',
@@ -13,8 +14,8 @@ test('isolated Supabase REST/RPC authorization matrix (read-only)', { skip: proc
   const url = new URL(process.env.P0_ISOLATED_URL);
   assert.equal(url.protocol, 'https:');
   assert.match(url.hostname, /^[a-z0-9-]+\.supabase\.co$/);
-  assert.notEqual(process.env.P0_TEST_JWT_A, process.env.P0_TEST_JWT_B, 'Use two distinct fixture accounts');
-  assert.notEqual(process.env.P0_ITEM_A_ID, process.env.P0_ITEM_B_ID, 'Use two distinct fixture items');
+  assert.ok(process.env.P0_TEST_JWT_A !== process.env.P0_TEST_JWT_B, 'Use two distinct fixture accounts');
+  assert.ok(process.env.P0_ITEM_A_ID !== process.env.P0_ITEM_B_ID, 'Use two distinct fixture items');
 
   // Optional defense-in-depth: deny the *known* production project reference.
   if (process.env.P0_PRODUCTION_PROJECT_REF) {
@@ -35,7 +36,7 @@ test('isolated Supabase REST/RPC authorization matrix (read-only)', { skip: proc
       ...(body === undefined ? {} : {body: JSON.stringify(body)}),
       signal: AbortSignal.timeout(12000)
     });
-    // Intentionally never return/log the response body.
+    // Response parsed in memory only; never compare objects containing private values in assertions.
     const data = await response.json().catch(() => null);
     return { status: response.status, data };
   }
@@ -49,7 +50,7 @@ test('isolated Supabase REST/RPC authorization matrix (read-only)', { skip: proc
     return r.data.id;
   }
   const uidA = await identities(jwtA), uidB = await identities(jwtB);
-  assert.notEqual(uidA, uidB);
+  assert.ok(uidA !== uidB, 'Fixture users must be different');
 
   for (const [label,jwt] of [['anon',null],['user A',jwtA],['user B',jwtB]]) {
     await t.test(label + ': direct reads of sensitive columns denied', async () => {
@@ -59,8 +60,8 @@ test('isolated Supabase REST/RPC authorization matrix (read-only)', { skip: proc
         ['profiles','phone']
       ]) {
         const r = await request('/rest/v1/' + table + '?select=' + column + '&limit=1',jwt);
-        assert.ok(r.status === 401 || r.status === 403 || r.status === 400,
-          label + ' unexpectedly received HTTP ' + r.status + ' for ' + table + '.' + column);
+        assert.ok(isPrivilegeDenied(r),
+          label + ': expected PostgreSQL 42501 privilege denial for ' + table + '.' + column);
       }
     });
   }
@@ -70,7 +71,7 @@ test('isolated Supabase REST/RPC authorization matrix (read-only)', { skip: proc
     const r = await request('/rest/v1/items?select=id,user_id,status,requested_by&id=eq.' + encodeURIComponent(id),jwt);
     assert.equal(r.status,200,'Fixture item must be visible to its owner');
     assert.equal(r.data?.length,1,'Fixture item must exist');
-    assert.equal(r.data[0].user_id,owner,'Fixture item must belong to expected user');
+    assert.ok(r.data[0].user_id === owner,'Fixture item must belong to expected user');
     assert.equal(r.data[0].status,'available','Fixture must be unreserved for cross-user negative test');
   }
 
@@ -83,11 +84,12 @@ test('isolated Supabase REST/RPC authorization matrix (read-only)', { skip: proc
       assert.equal(ownResult.data?.length,1,'Own pickup should return exactly one row');
       const otherResult = await request('/rest/v1/rpc/get_donation_pickup',jwt,'POST',{p_item_id:other});
       assert.equal(otherResult.status,200,'Denied RPC should respond with empty result');
-      assert.deepEqual(otherResult.data,[],'Pickup details leaked across users');
+      assert.ok(Array.isArray(otherResult.data) && otherResult.data.length === 0,
+        'Pickup details leaked across users');
     });
   }
   await t.test('anonymous pickup RPC cannot be invoked',async () => {
     const r = await request('/rest/v1/rpc/get_donation_pickup',null,'POST',{p_item_id:itemA});
-    assert.ok([401,403,404].includes(r.status),'Anonymous pickup RPC unexpectedly callable');
+    assert.ok(isPrivilegeDenied(r),'Anonymous pickup RPC unexpectedly callable');
   });
 });
