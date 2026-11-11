@@ -1,0 +1,34 @@
+name: P0 Static Security Gate
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/**'
+      - 'src/services/databaseService.js'
+      - 'tests/security-p0-static.test.cjs'
+      - 'tests/security-p0-rest.test.cjs'
+      - 'tests/security-p0-response.cjs'
+      - 'tests/security-p0-response.test.cjs'
+      - 'tests/security-p0-response.cjs'
+      - 'tests/security-p0-response.test.cjs'
+      - 'docs/security-p0-isolated-test-runbook.md'
+      - '.github/workflows/security-p0.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-static:
+    name: Static P0 safety checks (no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check SQL and service invariants
+        run: node --test tests/security-p0-static.test.cjs tests/security-p0-response.test.cjs tests/security-p0-response.test.cjs

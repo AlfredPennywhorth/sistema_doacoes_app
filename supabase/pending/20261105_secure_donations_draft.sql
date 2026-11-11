@@ -312,6 +312,25 @@ GRANT EXECUTE ON FUNCTION public.delete_donation(uuid) TO authenticated;
 -- 6. GRANTS: primeiro revogar permissao de tabela e coluna, depois reabrir
 -- apenas campos publicos. O RLS segue restringindo linhas.
 REVOKE ALL ON TABLE public.items FROM PUBLIC, anon, authenticated;
+-- REVOKE em nivel de tabela nao remove GRANTs antigos em nivel de coluna.
+-- Remover explicitamente ALTERACOES diretas legadas, inclusive identidade
+-- do doador/reservante e status. As operacoes passam somente pelas RPCs.
+REVOKE INSERT (id, user_id, title, description, category, image_url, status,
+  requested_by, reserved_at, warehouse_id, latitude, longitude,
+  pickup_address, pickup_instructions, ttl_days, expires_at, is_urgent,
+  created_at, collected_at, city, state, public_latitude,
+  public_longitude, location_precision, geocoded_at),
+  UPDATE (id, user_id, title, description, category, image_url, status,
+  requested_by, reserved_at, warehouse_id, latitude, longitude,
+  pickup_address, pickup_instructions, ttl_days, expires_at, is_urgent,
+  created_at, collected_at, city, state, public_latitude,
+  public_longitude, location_precision, geocoded_at),
+  REFERENCES (id, user_id, title, description, category, image_url, status,
+  requested_by, reserved_at, warehouse_id, latitude, longitude,
+  pickup_address, pickup_instructions, ttl_days, expires_at, is_urgent,
+  created_at, collected_at, city, state, public_latitude,
+  public_longitude, location_precision, geocoded_at)
+  ON TABLE public.items FROM PUBLIC, anon, authenticated;
 REVOKE SELECT (latitude, longitude, pickup_address, pickup_instructions)
   ON TABLE public.items FROM PUBLIC, anon, authenticated;
 GRANT SELECT (
@@ -321,6 +340,11 @@ GRANT SELECT (
 ) ON TABLE public.items TO authenticated;
 
 REVOKE ALL ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
+-- Prevenir autoelevacao e alteracao de perfis por grants legados de coluna.
+REVOKE INSERT (id, name, phone, is_admin),
+  UPDATE (id, name, phone, is_admin),
+  REFERENCES (id, name, phone, is_admin)
+  ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
 REVOKE SELECT (phone) ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
 GRANT SELECT (id, name, is_admin) ON TABLE public.profiles TO authenticated;
 -- Nao conceder INSERT ou UPDATE de is_admin ao cliente. O cadastro deve
@@ -332,6 +356,13 @@ DECLARE
   v_role text;
 BEGIN
   FOREACH v_role IN ARRAY ARRAY['anon','authenticated'] LOOP
+    IF has_column_privilege(v_role, 'public.profiles', 'is_admin', 'UPDATE')
+      OR has_column_privilege(v_role, 'public.items', 'user_id', 'UPDATE')
+      OR has_column_privilege(v_role, 'public.items', 'requested_by', 'UPDATE')
+      OR has_column_privilege(v_role, 'public.items', 'status', 'UPDATE')
+    THEN
+      RAISE EXCEPTION 'Falha de isolamento de escrita para papel %', v_role;
+    END IF;
     IF has_column_privilege(v_role, 'public.items', 'latitude', 'SELECT')
       OR has_column_privilege(v_role, 'public.items', 'longitude', 'SELECT')
       OR has_column_privilege(v_role, 'public.items', 'pickup_address', 'SELECT')
