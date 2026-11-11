@@ -6,6 +6,8 @@ on:
       - 'supabase/**'
       - 'src/services/databaseService.js'
       - 'tests/security-p0-static.test.cjs'
+      - 'tests/security-p0-rest.test.cjs'
+      - 'docs/security-p0-isolated-test-runbook.md'
       - '.github/workflows/security-p0.yml'
   workflow_dispatch:
 
