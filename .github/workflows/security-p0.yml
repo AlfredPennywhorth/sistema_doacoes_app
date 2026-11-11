@@ -9,6 +9,8 @@ on:
       - 'tests/security-p0-rest.test.cjs'
       - 'tests/security-p0-response.cjs'
       - 'tests/security-p0-response.test.cjs'
+      - 'tests/security-p0-response.cjs'
+      - 'tests/security-p0-response.test.cjs'
       - 'docs/security-p0-isolated-test-runbook.md'
       - '.github/workflows/security-p0.yml'
   workflow_dispatch:
@@ -29,4 +31,4 @@ jobs:
         with:
           node-version: '20'
       - name: Check SQL and service invariants
-        run: node --test tests/security-p0-static.test.cjs tests/security-p0-response.test.cjs
+        run: node --test tests/security-p0-static.test.cjs tests/security-p0-response.test.cjs tests/security-p0-response.test.cjs
